@@ -2,3 +2,6 @@
 Thumbs.db
 *.log
 .env*
+
+# 운영 데이터 백업 (공개 저장소에 올리지 않음)
+backups/

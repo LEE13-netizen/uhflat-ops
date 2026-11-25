@@ -1,5 +1,8 @@
 /* 웹 전용: 부서 PIN 로그인 화면. 아티팩트 index.html의 색 변수(--bg, --card …)를 그대로 쓴다. */
-body.locked>header,body.locked>.shell,body.locked>footer{display:none}
+body.gated>header,body.gated>.shell,body.gated>footer{display:none}
+.envstrip{position:fixed;top:0;left:0;right:0;z-index:200;background:#C0262D;color:#fff;font:700 14px/1.4 "Noto Sans KR",sans-serif;text-align:center;padding:6px 10px;pointer-events:none}
+body.has-envstrip{padding-top:32px}
+body.has-envstrip .gate{top:32px}
 .gate{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;background:var(--bg);overflow-y:auto}
 .gate[hidden]{display:none!important}
 .gbox{width:100%;max-width:420px;display:grid;gap:14px;justify-items:center;text-align:center}

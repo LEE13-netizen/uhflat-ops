@@ -27,7 +27,7 @@
       { id: "FO", label: "프론트", en: "Front Office", email: "fo@ops.uhflat.local" },
       { id: "HK", label: "키핑", en: "Housekeeping", email: "hk@ops.uhflat.local" },
       { id: "FM", label: "시설", en: "Facility", email: "fm@ops.uhflat.local" },
-      { id: "MG", label: "관리", en: "Management", email: "mg@ops.uhflat.local" },
+      { id: "MG", label: "매니지먼트", en: "Management", email: "mg@ops.uhflat.local" },
       { id: "OWNER", label: "프로그램 관리자", en: "Owner", email: "owner@ops.uhflat.local" }
     ]
   });

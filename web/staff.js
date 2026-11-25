@@ -157,7 +157,8 @@
       if (document.getElementById("staffBtn")) return;
       const b = document.createElement("button"); b.type = "button"; b.className = "tgl"; b.id = "staffBtn";
       b.textContent = A().kind === "legacy" ? "관리자 계정 만들기" : "직원·권한";
-      me.insertBefore(b, document.getElementById("lockBtn"));
+      const lb = document.getElementById("lockBtn");
+      if (lb && lb.parentNode === me) me.insertBefore(b, lb); else me.appendChild(b);
     }
   };
 })();

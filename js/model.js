@@ -2,7 +2,7 @@
 (function (G) {
   const OPS = G.OPS = G.OPS || {};
 
-  OPS.VERSION = "v0.19";
+  OPS.VERSION = "v0.23";
 
   // 현재 지점·설정 값(설정 화면에서 바뀜)
   OPS.CTX = { propertyId: "p1", propertyName: "", dayStart: "07:00", nightStart: "22:00", pwDept: "FM" };
@@ -13,11 +13,13 @@
     { id: "FO", name: "프론트", en: "Front Office", code: "FO" },
     { id: "HK", name: "키핑", en: "Housekeeping", code: "HK" },
     { id: "FM", name: "시설", en: "Engineering", code: "ENG" },
-    { id: "MG", name: "관리자", en: "Management", code: "MGT" }
+    { id: "MN", name: "매니지먼트", en: "Management", code: "MGT" },   // v0.23: 매니저·지배인. 모든 부서 업무·통계, 설정은 제외
+    { id: "MG", name: "관리자", en: "Administrator", code: "ADM" }     // 프로그램 전체 관리자 = 소유자 전용(오른쪽 위 입구)
   ];
+  OPS.isMgr = r => r === "MG" || r === "MN";
   OPS.deptName = id => (OPS.DEPTS.find(d => d.id === id) || {}).name || id || "";
 
-  // 근무 파트: 주간·미들은 한 파트 (2026-11-24 결정)
+  // 근무 파트: v0.21(2026-11-25)부터 화면에서 구분하지 않음. 예전 기록의 part 값을 읽을 때와 화면 자동 밝기(guessPart)에만 남겨 둠
   OPS.PARTS = [
     { id: "day", name: "주간 파트" },
     { id: "night", name: "야간 파트" }

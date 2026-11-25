@@ -51,7 +51,7 @@
   // 역할별 허용: 처리 동작은 담당 부서, 확인·취소는 요청 부서, 관리자는 모두.
   function allowed(t, to, role) {
     if (!(OPS.FLOW[t.status] || []).includes(to)) return false;
-    if (role === "MG") return true;
+    if (OPS.isMgr(role)) return true;                       // 관리자·매니지먼트는 모든 업무
     const doer = role === t.toDept, asker = role === t.fromDept;
     if (t.status === "완료 대기") return asker;            // 완료 확인, 반려
     if (t.status === "완료") return asker;                  // 다시 열기
@@ -125,7 +125,7 @@
     needsAck(t, role) {
       if (!OPS.OPEN.has(t.status)) return false;
       if (t.ack && t.ack[role]) return false;
-      if (role === "MG" || role === "FO") return true;           // 프론트는 응대 창구라 모든 열린 업무를 확인
+      if (OPS.isMgr(role) || role === "FO") return true;           // 프론트는 응대 창구라 모든 열린 업무를 확인
       return t.toDept === role || (t.fromDept === role && t.status === "완료 대기");
     },
     async ack(t, actor) {

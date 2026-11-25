@@ -641,24 +641,109 @@ body.drawer .side{transform:none;visibility:visible;transition:transform .22s ea
 .reqk{display:flex;flex-wrap:wrap;gap:6px}
 .reqk .tg{border:1.5px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--card);cursor:pointer}
 .reqk .tg:has(input:checked){border-color:var(--accent);background:var(--soft);font-weight:600}
+
+/* ===== v0.20 청소 단락 · 잠금 · 야간 검수 연결 · 가독성 ===== */
+.sgh{display:flex;align-items:baseline;gap:6px;margin:16px 0 6px;font-size:15.5px}
+.sgh small,.sgd summary small{font-weight:500;color:var(--muted);font-size:13.5px;margin-left:4px}
+.sgd{margin-top:14px}.sgd summary{cursor:pointer;font-weight:700;font-size:15.5px;padding:4px 0}
+.srow.donerow{opacity:.78;background:var(--soft)}
+.srow.donerow .sn{text-decoration:none}
+.prog{display:inline-block;vertical-align:middle;width:90px;height:8px;border-radius:4px;background:var(--soft);margin:0 6px 0 8px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--ok)}
+.okline{margin:12px 0 0;padding:8px 12px;border-radius:8px;background:var(--ok-bg);font-weight:600}
+.lockbtn{display:inline-flex;align-items:center;gap:4px}
+.sideset{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 6px 10px;font-weight:600;font-size:15px}.sideset select{height:38px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:0 8px;font-size:15px}
+.ext-tabs .extlink{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600;border:1.5px dashed var(--line)}
+.ext-tabs .extlink small{display:block;font-weight:500;font-size:13px;color:var(--muted)}
+.ext-tabs .extlink:hover,.ext-tabs .extlink:focus-visible{border-color:var(--accent);background:var(--soft)}
+body.locked{overflow:hidden}
+.lock{position:fixed;inset:0;z-index:80;overflow:auto;background:var(--bg);display:grid;place-items:center;padding:24px 16px}
+.lk{width:100%;max-width:880px;display:grid;gap:18px;text-align:center}
+.lkt b{display:block;font:700 clamp(72px,16vw,150px)/1 "Barlow Semi Condensed","Noto Sans KR",sans-serif;letter-spacing:.02em;font-variant-numeric:tabular-nums;color:var(--ink)}
+.lkt span{display:block;margin-top:8px;font-size:clamp(18px,3.2vw,24px);font-weight:600;color:var(--muted)}
+.lkp{margin:0;font-size:16px;color:var(--muted)}
+.lkn{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.lkn div{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:12px 8px}
+.lkn b{display:block;font:700 40px/1.05 "Barlow Semi Condensed","Noto Sans KR",sans-serif;color:var(--ink)}
+.lkn b small{font-size:24px;color:var(--muted)}
+.lkn span{font-size:15px;font-weight:600;color:var(--muted)}
+.lkn .hot{border-color:var(--hot)}.lkn .hot b{color:var(--hot)}
+.lkq{margin:6px 0 0;font-size:19px;font-weight:700}
+.lkd{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.lkd button{position:relative;display:flex;align-items:center;gap:12px;padding:18px 16px;border-radius:16px;border:2px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;text-align:left;min-height:76px}
+.lkd button:hover,.lkd button:focus-visible{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--soft)}
+.lkd .rc{font:700 22px "Barlow Semi Condensed",sans-serif;padding:6px 10px;border-radius:10px;color:var(--card);min-width:64px;text-align:center}
+.lkd .rl b{display:block;font-size:20px}.lkd .rl small{font-size:14px;color:var(--muted)}
+.lkd .n{position:absolute;top:-9px;right:-6px;padding:2px 9px;border-radius:999px;background:var(--hot);color:#fff;font-size:13.5px;font-weight:700}
+.lkf{margin:0;font-size:14px;color:var(--muted)}
+/* 가독성: 작은 회색 글씨를 한 단계 키운다(나이 든 직원 기준 최소 13.5px) */
+.w,.tl .w,.task .meta,footer,.legend,.badge,.sideh,.copy-m{font-size:14px}
+.sum,.chip{font-size:13.5px;padding:3px 9px}.sum b{font-size:14px}
+.pri{font-size:12.5px}.task .room small{font-size:12.5px}nav.tabs .later{font-size:12.5px}
+.mark small{font-size:13.5px}
+.sub{line-height:1.6}
+.sx{font-size:15px}
+@media (prefers-reduced-motion:reduce){.blinkrow,.tf.hot,.tf.need,.rt.hot,.rt.need{animation:none!important}}
+.whoami .rc{width:auto;min-width:46px;padding:0 7px}
+.side .re{line-height:1.25}.side .rk{line-height:1.3;margin-top:2px}
+
+/* ===== v0.21 첫 화면(부서 고르기) · 부서 아이콘 · 관리자 전용 입구 ===== */
+.di{display:block;flex:none}
+.roles .rc,.whoami .rc{display:grid;place-items:center}
+.roles .rc .di{width:24px;height:24px}.whoami .rc .di{width:21px;height:21px}
+.dct{display:inline-flex;align-items:center;gap:2px}.dct .di{width:13px;height:13px}
+.dc{display:inline-grid;place-items:center}
+.adminbtn{order:99;margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-weight:700;cursor:pointer}
+.adminbtn[aria-pressed=true]{background:var(--ink);color:var(--card);border-color:var(--ink)}
+.adminbtn[hidden]{display:none}
+@media(max-width:600px){.adminbtn{order:0;height:48px;padding:0 11px;margin-left:0}.adminbtn span{display:none}}
+.lock{place-items:start center;padding:0}
+.lkbar{position:sticky;top:0;width:100%;display:flex;justify-content:flex-end;padding:16px 18px 0;min-height:60px}
+.lkadmin{display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--muted);font-weight:700;font-size:15px;cursor:pointer}
+.lkadmin:hover,.lkadmin:focus-visible{color:var(--ink);border-color:var(--ink)}
+.lk{max-width:860px;padding:4vh 16px 40px;gap:22px}
+.lkhead{display:grid;gap:6px}
+.lkhead b{font:700 clamp(44px,8vw,64px)/1 "Barlow Semi Condensed","Noto Sans KR",sans-serif;letter-spacing:.06em}
+.lkhead span{font-size:17px;color:var(--muted);font-weight:600}
+.lkhead .lkt{font-size:16px;font-weight:500}
+.lkq{margin:8px 0 0;font-size:22px;font-weight:700}
+.lkd{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+.lkd button{flex-direction:column;justify-content:center;gap:8px;padding:28px 16px 24px;min-height:200px;text-align:center;border-width:2px}
+.lkd .ic{display:grid;place-items:center;width:92px;height:92px;border-radius:24px;color:#fff}
+.lkd .ic .di{width:52px;height:52px}
+.lk-FO .ic{background:light-dark(#00727A,#5CC8C2)}.lk-HK .ic{background:light-dark(#7A4FB5,#B89AF0)}.lk-FM .ic{background:light-dark(#C46A12,#F2A65A)}
+:root[data-theme=dark] .lkd .ic{color:#0F1720}:root[data-theme=dark] .lk-FO .ic{background:#5CC8C2}:root[data-theme=dark] .lk-HK .ic{background:#B89AF0}:root[data-theme=dark] .lk-FM .ic{background:#F2A65A}
+:root[data-theme=light] .lkd .ic{color:#fff}:root[data-theme=light] .lk-FO .ic{background:#00727A}:root[data-theme=light] .lk-HK .ic{background:#7A4FB5}:root[data-theme=light] .lk-FM .ic{background:#C46A12}
+.lkd button b{font-size:24px}.lkd button small{font-size:15px;color:var(--muted)}
+@media(max-width:600px){.lkd{grid-template-columns:1fr;gap:12px}.lkd button{display:grid;grid-template-columns:auto 1fr;column-gap:16px;row-gap:2px;min-height:0;padding:14px 16px;text-align:left}.lkd .ic{grid-row:1/3;width:68px;height:68px;border-radius:18px}.lkd .ic .di{width:40px;height:40px}.lkd button b{align-self:end;font-size:22px}.lkd button small{align-self:start}.lk{padding-top:1vh}}
+/* v0.23 매니지먼트(MN) 부서 색: 남색 */
+.roles button[data-role=MN]{--dept:#2F4C8F}:root[data-theme=dark] .roles button[data-role=MN]{--dept:#9DB5EE}
+.whoami[data-who=MN]{--dept:#2F4C8F}:root[data-theme=dark] .whoami[data-who=MN]{--dept:#9DB5EE}
+.dc-MN{background:light-dark(#2F4C8F,#9DB5EE)}:root[data-theme=dark] .dc-MN{background:#9DB5EE}:root[data-theme=light] .dc-MN{background:#2F4C8F}
+.lk-MN .ic{background:light-dark(#2F4C8F,#9DB5EE)}:root[data-theme=dark] .lk-MN .ic{background:#9DB5EE}:root[data-theme=light] .lk-MN .ic{background:#2F4C8F}
+/* v0.23 첫 화면: 부서 4칸을 한 줄로(PC), 좁은 화면은 2칸씩, 휴대폰은 기존 한 줄씩 */
+@media(min-width:601px){.lk{max-width:1040px}.lkd{grid-template-columns:repeat(4,minmax(0,1fr))}.lkd button{min-height:190px;padding:24px 10px 20px}}
+@media(min-width:601px) and (max-width:860px){.lkd{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 <link rel="stylesheet" href="web/web.css">
 </head>
-<body class="locked">
+<body class="gated">
 <header>
   <div class="wrap">
     <div class="top">
       <button type="button" class="menubtn" id="menuBtn" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>메뉴</span><span class="mbadge" id="menuBadge" hidden></span></button>
       <button type="button" class="whoami" id="whoBtn" aria-label="부서 바꾸기"></button>
-      <div class="mark">OPS<small>통합 업무 시스템 · v0.19 · 1인 시험판</small></div>
+      <div class="mark">OPS<small>통합 업무 시스템 · v0.23 · 1인 시험판</small></div>
       <div class="clock" id="clock" data-noi18n aria-live="off"><b id="clockT">--:--:--</b><span id="clockD"></span></div>
+      <button type="button" class="adminbtn" id="adminBtn" hidden title="프로그램 전체 관리자 전용"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21.5s8-3.8 8-10V5.2L12 2.5 4 5.2v6.3c0 6.2 8 10 8 10z"/><path d="m8.8 11.8 2.3 2.3 4.3-4.4"/></svg><span>관리자</span></button>
       <div class="me">
         <span class="badge" id="where">저장소 연결 중</span>
         <input id="myName" placeholder="작성자 이름" autocomplete="off" aria-label="작성자 이름" list="nameList"><datalist id="nameList"></datalist>
-        <select id="myPart" aria-label="근무 파트"></select>
+        <select id="myPart" aria-label="근무 파트" hidden></select>
         <button type="button" class="tgl" id="themeBtn" aria-pressed="false" title="화면 밝기: 자동(야간 파트 시간에 어둡게) / 주간 / 야간"></button>
         <button type="button" class="tgl" id="langBtn" title="English screen for international staff / 한국어 화면" data-noi18n>EN</button>
         <button type="button" class="tgl" id="sizeBtn" aria-pressed="false" title="글자 크게">가+</button>
+        <button type="button" class="tgl lockbtn" id="lockBtn" title="화면 잠금(부서를 골라 다시 엽니다)"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>잠금</button>
       </div>
     </div>
   </div>
@@ -672,8 +757,12 @@ body.drawer .side{transform:none;visibility:visible;transition:transform .22s ea
     <div class="roles" id="roles" role="group" aria-label="부서 전환"></div>
     <p class="sideh">Menu</p>
     <nav class="tabs" id="tabs" role="tablist"></nav>
+    <p class="sideh" id="extH" hidden>Night Audit</p>
+    <nav class="tabs ext-tabs" id="extLinks" aria-label="야간 검수 연결" hidden></nav>
     <p class="sideh" id="laterH">준비 중</p>
     <nav class="tabs later-tabs" id="laterTabs" aria-label="준비 중 메뉴"></nav>
+    <p class="sideh">This device</p>
+    <label class="sideset">자동 잠금<select id="autoLock" aria-label="자동 잠금" title="이 기기에서 아무도 만지지 않으면 잠금 화면으로"><option value="0">끔</option><option value="5">5분 뒤</option><option value="10">10분 뒤</option><option value="30">30분 뒤</option></select></label>
     <div class="sidefoot"><span>&copy; 2026 OPS 통합 업무 시스템</span><span>이준화 &middot; 010-3907-5918</span><span>h83500@gmail.com</span></div>
   </aside>
   <main>
@@ -684,6 +773,7 @@ body.drawer .side{transform:none;visibility:visible;transition:transform .22s ea
 </div>
 <footer class="wrap"><p id="foot"></p><p class="copy-m"><span>&copy; 2026 OPS 통합 업무 시스템</span><span>이준화 &middot; 010-3907-5918</span><span>h83500@gmail.com</span></p></footer>
 <div class="dropzone" id="dropzone" hidden></div>
+<div class="lock" id="lock" role="dialog" aria-modal="true" aria-label="잠금 화면" hidden></div>
 <dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
 <div id="gate" class="gate"><div class="gbox"><div class="glogo">UHC<small>OPERATION SYSTEM · HOTEL INTEGRATED MANAGEMENT</small></div><div class="gmsg">불러오는 중…</div></div></div>
 <script>window.OPS_APP_SCRIPTS=["js/model.js","js/store.js","web/store-supabase.js","js/core.js","js/seocho-ct.js","js/office-crypto.js","js/rooms.js","js/layout.js","js/stays.js","js/i18n.js","js/desk.js","js/svc.js","js/dash.js","js/app.js"];</script>

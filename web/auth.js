@@ -11,7 +11,14 @@
   OPS.SB = sb;
   const FN = CFG.supabaseUrl + "/functions/v1/";
   const APP_SCRIPTS = window.OPS_APP_SCRIPTS || [];
-  const DEPTS = ["FO", "HK", "FM", "MG"];
+  // 앱 부서(v0.23): 프론트·키핑·시설·매니지먼트(MN) + 관리자(MG = 프로그램 관리자 전용)
+  const DEPTS = ["FO", "HK", "FM", "MN", "MG"];
+  // 시험 환경은 화면 맨 위에 늘 경고 띠를 보인다(운영과 헷갈리지 않게)
+  if (CFG.env !== "prod") {
+    const strip = document.createElement("div");
+    strip.className = "envstrip"; strip.textContent = "시험 환경 — 실제 운영 데이터가 아닙니다. 운영 주소: lee13-netizen.github.io/uhflat-ops";
+    document.body.prepend(strip); document.body.classList.add("has-envstrip");
+  }
   const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const $ = id => document.getElementById(id);
 
@@ -34,16 +41,18 @@
   async function setSession(user) {
     const prof = await personalProfile(user);
     if (prof) {
-      const dept = prof.departments && DEPTS.includes(prof.departments.code) ? prof.departments.code : "FO";
       const owner = prof.role === "super_admin";
+      let dept = prof.departments && DEPTS.includes(prof.departments.code) ? prof.departments.code : "FO";
+      if (dept === "MG" && !owner) dept = "MN";              // 관리자(MG) 화면은 프로그램 관리자만
       OPS.Auth = { kind: "personal", uid: user.id, login_id: prof.login_id, name: prof.name, title: prof.title, role: prof.role, dept, deptName: prof.departments ? prof.departments.name : dept, owner, admin: owner || prof.role === "dept_admin", allowed: owner ? DEPTS.slice() : [dept], mustChangePin: prof.must_change_pin, lock };
       installUserApi(prof);
     } else {
       const m = user.app_metadata || {};
-      if (!DEPTS.includes(m.dept)) return false;           // 부서 계정도 개인 계정도 아님
+      if (!["FO", "HK", "FM", "MG"].includes(m.dept)) return false;   // 부서 계정도 개인 계정도 아님
       const owner = m.owner === true;
+      const dept = m.dept === "MG" ? (owner ? "MG" : "MN") : m.dept;    // 공용 '관리' 계정 = 매니지먼트
       const acc = CFG.accounts.find(a => a.email === user.email) || {};
-      OPS.Auth = { kind: "legacy", uid: user.id, dept: m.dept, owner, admin: false, legacyOwner: owner, label: acc.label || m.dept, allowed: owner ? DEPTS.slice() : [m.dept], lock };
+      OPS.Auth = { kind: "legacy", uid: user.id, dept, owner, admin: false, legacyOwner: owner, label: acc.label || dept, allowed: owner ? DEPTS.slice() : [dept], lock };
     }
     const A = OPS.Auth;
     try {
@@ -70,7 +79,8 @@
         }
         const out = {}; (ids || []).forEach(i => { if (cache[i]) out[i] = cache[i]; }); return out;
       },
-      can: async () => true
+      can: async () => true,
+      isOwner: async () => prof.role === "super_admin"     // 야간 검수 관리자용 바로가기 등
     };
     window.claude = { use: async k => (k === "user" ? api : null) };
   }
@@ -80,7 +90,7 @@
   function startApp() {
     if (started) return; started = true;
     $("gate").hidden = true;
-    document.body.classList.remove("locked");
+    document.body.classList.remove("gated");
     (function next(i) {
       if (i >= APP_SCRIPTS.length) { afterApp(); return; }
       const s = document.createElement("script");
@@ -97,7 +107,7 @@
   }
   function addHeader() {
     const me = document.querySelector(".me");
-    if (document.getElementById("lockBtn")) return;
+    if (document.getElementById("loginWho")) return;
     if (!me) { setTimeout(addHeader, 300); return; }
     const A = OPS.Auth;
     const who = document.createElement("span");
@@ -114,10 +124,15 @@
       const pb = document.createElement("button"); pb.type = "button"; pb.className = "tgl"; pb.textContent = "PIN 변경";
       pb.addEventListener("click", () => showChangePin(false)); me.appendChild(pb);
     }
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "tgl"; b.id = "lockBtn"; b.textContent = "잠금"; b.title = "로그아웃하고 로그인 화면으로";
-    b.addEventListener("click", lock);
-    me.appendChild(b);
+    // 아티팩트 화면에 잠금 버튼이 있으면 그것을 쓴다(앱이 잠금 = 로그아웃으로 처리). 없을 때만 만든다
+    const lb = $("lockBtn");
+    if (lb) lb.title = "로그아웃하고 로그인 화면으로";
+    else {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "tgl"; b.id = "lockBtn"; b.textContent = "잠금"; b.title = "로그아웃하고 로그인 화면으로";
+      b.addEventListener("click", lock);
+      me.appendChild(b);
+    }
   }
 
   // 잠금: 이 기기의 로그인 정보를 즉시 지운다(서버 응답을 기다리다 로그인이 남는 일이 없게)

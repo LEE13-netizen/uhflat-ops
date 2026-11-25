@@ -21,8 +21,8 @@
     { id: "settings", name: "설정" }
   ];
   const LATER = {
-    shift: ["근무 파트 열기·마감", "마감 때 미완료 업무와 미체크 항목 자동 수집", "다음 근무자 확인 기록", "마감 후 잠금(월 마감 구조 변형)"],
-    check: ["부서·파트별 당일 체크 틀", "근무 파트별 체크 실행", "미체크 항목을 '체크 미완료' 업무로 승격"]
+    shift: ["근무 교대 열기·마감", "마감 때 미완료 업무와 미체크 항목 자동 수집", "다음 근무자 확인 기록", "마감 후 잠금(월 마감 구조 변형)"],
+    check: ["부서별 당일 체크 틀", "근무자별 체크 실행", "미체크 항목을 '체크 미완료' 업무로 승격"]
   };
 
   const st = {
@@ -40,18 +40,35 @@
     notes: {}, openRoomId: null, backRoom: null, noteEdit: null, prefill: null, bNeed: false,
     rdate: OPS.ymd(Date.now()), rq: "", rb: "all", rOnly: true, rHide: true, rMsg: ""
   };
-  // [web] 웹 로그인: 부서 계정은 자기 부서로 고정, 프로그램 관리자만 모든 부서
+  // [web] 웹 로그인: 허용된 부서만(프로그램 관리자 = 모든 부서)
   const canRole = id => !OPS.Auth || OPS.Auth.allowed.includes(id);
   if (!OPS.DEPTS.some(d => d.id === st.role) || !canRole(st.role)) st.role = OPS.Auth ? OPS.Auth.dept : "FO";
+  st.locked = mem.get("locked", "") === "1";
+  // v0.21 첫 화면: 브라우저를 새로 열 때마다 부서 고르기 화면부터(같은 창의 새로 고침·자정 전환은 유지)
+  try { if (!sessionStorage.getItem("opsEntered")) st.locked = true; } catch (e) {}
+  if (OPS.Auth) st.locked = false;   // [web] PIN 로그인이 입구
+  // 부서 아이콘(v0.21). 영문 약자 대신 그림: 프론트=데스크에 선 사람, 키핑=빗자루, 시설=렌치, 관리자=방패
+  const ICON_PATH = {
+    FO: '<circle cx="9" cy="5" r="2.7"/><path d="M3.8 13.2c.3-3 2.4-4.9 5.2-4.9s4.9 1.9 5.2 4.9"/><path d="M15.8 13.2a2.7 2.7 0 0 1 5.4 0"/><path d="M18.5 9.4v1.1"/><path d="M1.8 13.2h20.4"/><path d="M3.3 13.2v7.8h17.4v-7.8"/>',
+    HK: '<path d="M15.5 2.5 11 12"/><path d="M6.5 12h8.5l2 9h-12.5z"/><path d="M8.5 15.5v5.5M11.5 15.5v5.5M14.5 15.5v5.5"/><path d="M19.5 3.5v4M17.5 5.5h4"/>',
+    FM: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    MG: '<path d="M12 21.5s8-3.8 8-10V5.2L12 2.5 4 5.2v6.3c0 6.2 8 10 8 10z"/><path d="m8.8 11.8 2.3 2.3 4.3-4.4"/>',
+    MN: '<rect x="5" y="4" width="14" height="17.5" rx="2"/><path d="M9 4V2.8h6V4"/><path d="m8.5 10 1.6 1.6 2.9-3"/><path d="M14.5 10.5h2"/><path d="m8.5 15.5 1.6 1.6 2.9-3"/><path d="M14.5 16h2"/>'
+  };
+  const icon = (id, size) => `<svg class="di" viewBox="0 0 24 24" width="${size || 22}" height="${size || 22}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATH[id] || ""}</svg>`;
+  const STAFF_DEPTS = () => OPS.DEPTS.filter(d => d.id !== "MG");
+  // 관리자(프로그램 전체 관리)는 이 시스템 소유자만. 계정 정보를 못 받는 환경(이 기기 전용 시험)에서는 막지 않는다
+  const adminOk = () => OPS.Auth ? !!OPS.Auth.owner : (!!st.uReady && (!UAPI || st.owner === true));   // [web] 프로그램 관리자 계정만
   // 현황판(객실 판)이 모든 부서의 첫 화면. 통계는 관리자만
-  const fitTab = () => { if (st.role !== "MG" && st.tab === "dash") st.tab = "board"; st.bf = ""; };
+  // v0.23: 통계는 관리자(소유자)와 매니지먼트
+  const fitTab = () => { if (!OPS.isMgr(st.role) && st.tab === "dash") st.tab = "board"; st.bf = ""; };
   { const t0 = mem.get("tab", ""); if (t0 && TABS.some(t => t.id === t0)) st.tab = t0; mem.set("tab", ""); }
   fitTab();
   st.bMode = mem.get("bmode", "grid") === "plan" ? "plan" : "grid";
 
   // 작성자 = 로그인한 사람(claude.ai 계정) + 지금 부서. 저장은 계정 id만, 이름은 화면에 그릴 때마다 계정에서 읽는다.
   // 로그인 정보를 못 받으면(공개 링크로 들어온 사람 등) 이름 칸에 적은 이름을 쓴다.
-  const actor = () => ({ role: st.role, uid: st.me ? st.me.id : "", name: $("myName").value.trim() || (st.me ? "" : OPS.deptName(st.role) + " 근무자"), part: $("myPart").value });
+  const actor = () => ({ role: st.role, uid: st.me ? st.me.id : "", name: $("myName").value.trim() || (st.me ? "" : OPS.deptName(st.role) + " 근무자") });   // v0.21: 주간·야간 파트 구분 없앰(새 기록에 파트를 남기지 않음)
   let UAPI = null, nameT = null; const nameQ = new Set();
   function nameOf(uid, fallback) {
     if (uid && UAPI) {
@@ -118,12 +135,13 @@
     renderNames();
     const mk = document.querySelector(".mark small");
     if (mk) mk.textContent = (OPS.CTX.propertyName ? OPS.CTX.propertyName + " · " : "") + "통합 업무 시스템 · " + OPS.VERSION + (OPS.Auth ? " · 웹" : " · 1인 시험판");
-    $("roles").innerHTML = OPS.DEPTS.filter(d => canRole(d.id)).map(d => {
+    $("roles").innerHTML = STAFF_DEPTS().filter(d => canRole(d.id)).map(d => {
       const n = st.tasks.filter(t => Core.needsAck(t, d.id)).length + (d.id === "HK" && st.master ? svcRows().filter(OPS.Svc.hkNeedsAck).length : 0);
-      return `<button type="button" data-role="${d.id}" aria-pressed="${d.id === st.role}" aria-label="${esc(d.en + " " + d.name)}${n ? ", 확인 필요 " + n + "건" : ""}"><span class="rc">${esc(d.code)}</span><span class="rl"><span class="re">${esc(d.en)}</span><span class="rk">${esc(d.name)}</span></span>${n ? `<span class="n">${n}</span>` : ""}</button>`;
+      return `<button type="button" data-role="${d.id}" aria-pressed="${d.id === st.role}" aria-label="${esc(d.en + " " + d.name)}${n ? ", 확인 필요 " + n + "건" : ""}"><span class="rc">${icon(d.id)}</span><span class="rl"><span class="re">${esc(d.en)}</span><span class="rk">${esc(d.name)}</span></span>${n ? `<span class="n">${n}</span>` : ""}</button>`;
     }).join("");
     const me = OPS.DEPTS.find(d => d.id === st.role) || {};
-    const wb = $("whoBtn"); if (wb) { wb.dataset.who = st.role; wb.innerHTML = `<span class="rc">${esc(me.code || "")}</span><span class="rk2">${esc(me.name || "")}${st.me ? " · " + esc(nameOf(st.me.id, $("myName").value.trim()) || "로그인") : ""}</span>`; }
+    const wb = $("whoBtn"); if (wb) { wb.dataset.who = st.role; wb.innerHTML = `<span class="rc">${icon(me.id)}</span><span class="rk2">${esc(me.name || "")}${st.me ? " · " + esc(nameOf(st.me.id, $("myName").value.trim()) || "로그인") : ""}</span>`; }
+    const ab = $("adminBtn"); if (ab) { ab.hidden = !adminOk(); ab.setAttribute("aria-pressed", String(st.role === "MG")); }
     // 탭 숫자: 키핑은 아직 출발 안 한 불출, 프론트는 키핑이 "못 함"으로 돌려보낸 오늘 요청
     const badge = id => {
       if (id !== "desk") return 0;
@@ -136,7 +154,7 @@
     const mb = $("menuBadge"); if (mb) { mb.hidden = !myN; mb.textContent = myN; }
     // 쓰는 메뉴와 아직 준비 중인 메뉴(교대·체크리스트)를 나눠 그린다
     const tabBtn = t => { const n = badge(t.id); return `<button type="button" role="tab" data-tab="${t.id}" aria-selected="${t.id === st.tab}">${esc(t.name)}${n ? `<span class="tbadge">${n}</span>` : ""}${t.later ? `<span class="later">${esc(t.later)}</span>` : ""}</button>`; };
-    const shown = TABS.filter(t => !t.mg || st.role === "MG");
+    const shown = TABS.filter(t => !t.mg || OPS.isMgr(st.role));
     $("tabs").innerHTML = shown.filter(t => !t.later).map(tabBtn).join("");
     if ($("laterTabs")) $("laterTabs").innerHTML = shown.filter(t => t.later).map(tabBtn).join("");
   }
@@ -166,7 +184,7 @@
   }
 
   function workView() {
-    if (st.role === "MG") return managerView();
+    if (OPS.isMgr(st.role)) return managerView();
     const r = st.role;
     const inbox = st.tasks.filter(t => t.toDept === r && t.status !== "완료 대기" && filterGroup(t));
     const confirm = st.tasks.filter(t => t.fromDept === r && t.toDept !== r && t.status === "완료 대기");
@@ -197,7 +215,7 @@
     return `<div class="cols"><div>
       <section class="card"><h2>부서별 미처리</h2><p class="sub">열린 업무를 받는 부서 기준으로 셉니다.</p>
         <div class="scroll"><table><thead><tr><th>부서</th><th class="num">대기</th><th class="num">진행</th><th class="num">보류</th><th class="num">긴급</th><th class="num">기한 초과</th></tr></thead><tbody>${rows}</tbody></table></div></section>
-      <section class="card"><h2>열린 업무 전체 <span class="c">${open.length}</span></h2>${listHtml(open, "MG", "열린 업무가 없습니다.")}</section>
+      <section class="card"><h2>열린 업무 전체 <span class="c">${open.length}</span></h2>${listHtml(open, st.role, "열린 업무가 없습니다.")}</section>
     </div><div>${formHtml()}</div></div>`;
   }
 
@@ -398,12 +416,13 @@
 
   // ---------- 끌어다 놓기(v0.17) ----------
   // 화면 어디에 놓아도 예약표가 반영된다. 올릴 수 있는 사람은 버튼과 같다(프론트·관리자). 설정 화면에서는 청소표도 받는다.
-  const canDrop = () => st.role === "FO" || st.role === "MG";
+  const canDrop = () => st.role === "FO" || OPS.isMgr(st.role);
   const XL = /\.(xlsx|xlsm)$/i;
   let dragDepth = 0;
   const hasFiles = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files"));
   function dropShow(on) {
     const d = $("dropzone"); if (!d) return;
+    if (st.locked) on = false;
     if (!on) { d.hidden = true; return; }
     const ok = canDrop(), all = st.tab === "settings" && st.role === "MG";
     d.className = "dropzone " + (ok ? "ok" : "no");
@@ -418,6 +437,7 @@
   window.addEventListener("drop", e => {
     if (!hasFiles(e)) return;
     e.preventDefault(); dragDepth = 0; dropShow(false);   // 브라우저가 파일을 새 창으로 여는 것을 막는다
+    if (st.locked) return;
     if (!canDrop()) { st.dropMsg = { text: "예약표는 프론트·관리자 부서에서만 올릴 수 있습니다. 메뉴에서 부서를 바꾼 뒤 다시 놓아 주십시오.", at: Date.now(), err: true }; render(); return; }
     const files = Array.from(e.dataTransfer.files || []);
     const xl = files.filter(f => XL.test(f.name)), other = files.filter(f => !XL.test(f.name));
@@ -552,7 +572,7 @@
       const late = x && x.s && x.s.late && !x.s.co ? x.s.late.time : "";
       const stTxt = [s && s.stay ? (STAY_SHORT[s.stay] || s.stay) : "", late ? "레이트 " + late : stage].filter(Boolean).join(" · ");
       const cls = ["rt", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", hot ? "hot" : "", need ? "need" : "", x && x.s && x.s.done && x.type === "out" ? "ready" : ""].join(" ");
-      const badges = ["FO", "HK", "FM"].filter(k => dc[k]).map(k => `<span class="dct dc-${k}">${esc((OPS.DEPTS.find(d => d.id === k) || {}).code || k)} ${dc[k]}</span>`).join("")
+      const badges = ["FO", "HK", "FM"].filter(k => dc[k]).map(k => `<span class="dct dc-${k}" title="${esc((OPS.DEPTS.find(d => d.id === k) || {}).name || k)} 업무 ${dc[k]}건">${icon(k, 14)}${dc[k]}</span>`).join("")
         + (dBy.get(id) ? `<span class="dct dv">불출 ${dBy.get(id)}</span>` : "") + (hasNote(id) ? `<span class="dct nt">비고</span>` : "");
       return `<button type="button" class="${cls}" data-room="${esc(id)}" aria-label="${esc(r.building)} ${esc(r.no)}호${stTxt ? ", " + esc(stTxt) : ""}${hot ? ", 긴급" : ""}${need ? ", 확인 필요" : ""}${ts.length ? ", 열린 업무 " + ts.length + "건" : ""}">
         <span class="rtop"><span class="tn">${esc(r.no)}</span>${hot ? `<span class="tf hot">긴급</span>` : need ? `<span class="tf need">미확인</span>` : ""}</span>
@@ -588,7 +608,7 @@
       ${demo ? `<p class="demo">예시 객실입니다. 관리자 역할의 설정 탭에서 객실을 등록하거나 예약표를 한 번 올리면 실제 객실로 바뀝니다.</p>` : ""}
       ${!demo ? dayNote() : ""}
       ${!demo ? liveLine() : ""}
-      <details class="lgd" ${st.lgOpen ? "open" : ""}><summary>표시 설명</summary><div class="legend2"><span><span class="tf hot">긴급</span> 긴급 업무</span><span><span class="tf need">미확인</span> ${esc(OPS.deptName(st.role))} 화면에서 아직 안 본 것</span><span><span class="dct dc-FO">FO 1</span><span class="dct dc-HK">HK 1</span><span class="dct dc-FM">ENG 1</span> 부서별 열린 업무</span><span><span class="dct dv">불출 1</span> 진행 중 불출</span><span class="lgb lg-out">퇴실</span><span class="lgb lg-in">입실</span><span class="lgb lg-stay">연박</span><span class="lgb lg-free">공실</span><span class="lgb lg-ready">입실 가능</span></div></details>
+      <details class="lgd" ${st.lgOpen ? "open" : ""}><summary>표시 설명</summary><div class="legend2"><span><span class="tf hot">긴급</span> 긴급 업무</span><span><span class="tf need">미확인</span> ${esc(OPS.deptName(st.role))} 화면에서 아직 안 본 것</span><span><span class="dct dc-FO">${icon("FO", 14)}1</span><span class="dct dc-HK">${icon("HK", 14)}1</span><span class="dct dc-FM">${icon("FM", 14)}1</span> 부서별 열린 업무(프론트·키핑·시설)</span><span><span class="dct dv">불출 1</span> 진행 중 불출</span><span class="lgb lg-out">퇴실</span><span class="lgb lg-in">입실</span><span class="lgb lg-stay">연박</span><span class="lgb lg-free">공실</span><span class="lgb lg-ready">입실 가능</span></div></details>
     </section>
     ${mode === "plan" ? planView(M, by, needIds, hotIds, q) : sections || `<div class="empty">해당하는 객실이 없습니다.</div>`}`;
   }
@@ -632,6 +652,7 @@
   const KPI_BY_ROLE = {
     FO: [["reply", "hot"], ["need", "acc"], ["hot", "hot"], ["late", "warn"], ["pre"], ["ing"], ["ready", "ok"]],
     MG: [["need", "acc"], ["hot", "hot"], ["late", "warn"], ["reply", "hot"], ["pre"], ["ing"], ["ready", "ok"]],
+    MN: [["need", "acc"], ["hot", "hot"], ["late", "warn"], ["reply", "hot"], ["pre"], ["ing"], ["ready", "ok"]],
     HK: [["need", "acc"], ["todo", "acc"], ["deliv", "warn"], ["hot", "hot"], ["pre"], ["ready", "ok"]],
     FM: [["need", "acc"], ["mine", "acc"], ["hot", "hot"], ["late", "warn"]]
   };
@@ -665,7 +686,7 @@
     const today = OPS.ymd(now);
     const T = D.totals(st.tasks, now), L = D.deptLoad(st.tasks, now);
     const by = roomTasks(M), needIds = new Set(), hotIds = new Set();
-    by.forEach((ts, id) => { if (ts.some(t => Core.needsAck(t, "MG"))) needIds.add(id); if (ts.some(t => t.priority === "긴급")) hotIds.add(id); });
+    by.forEach((ts, id) => { if (ts.some(t => Core.needsAck(t, st.role))) needIds.add(id); if (ts.some(t => t.priority === "긴급")) hotIds.add(id); });
     const K = demo ? null : kpiSets(M, by, needIds, hotIds);
     const go = (tab, extra) => `data-gotab="${tab}"${extra || ""}`;
     const kpi = (n, label, tone, attrs, title) => `<button type="button" class="kpi big ${n && tone ? "t-" + tone : ""}" ${attrs} title="${esc(title)}"><b>${n}</b><span>${esc(label)}</span></button>`;
@@ -696,7 +717,7 @@
     const depts = OPS.DEPTS.filter(d => d.id !== "MG"), max = Math.max(1, ...depts.map(d => L[d.id].open));
     const deptCard = `<section class="card"><h2>부서별 열린 업무</h2><p class="sub">받은 부서 기준. 막대 = 열린 업무 수.</p><div class="hbars">
       ${depts.map(d => { const o = L[d.id]; return `<button type="button" class="hb" ${go("work")} aria-label="${esc(d.name)} 열린 업무 ${o.open}건, 대기 ${o.wait}, 진행 ${o.doing}, 확인 대기 ${o.confirm}, 보류 ${o.hold}">
-        <span class="hbl"><span class="dc dc-${d.id}">${esc(d.code)}</span>${esc(d.name)}</span>
+        <span class="hbl"><span class="dc dc-${d.id}">${icon(d.id, 16)}</span>${esc(d.name)}</span>
         <span class="hbt"><span class="hbf" style="width:${o.open ? Math.max(3, o.open / max * 100) : 0}%"></span><b>${o.open}</b></span>
         <span class="hbs">대기 ${o.wait} · 진행 ${o.doing} · 확인 대기 ${o.confirm} · 보류 ${o.hold}${o.hot ? ` · <span class="warnt">긴급 ${o.hot}</span>` : ""}${o.late ? ` · <span class="warnt">기한 초과 ${o.late}</span>` : ""}</span></button>`; }).join("")}
     </div></section>`;
@@ -705,7 +726,7 @@
     // 응답 시간·반복
     const R = D.response(st.tasks, now, 7, 5);
     const respCard = `<section class="card"><h2>응답 시간 <span class="sub" style="margin:0;font-weight:500">최근 7일</span></h2><p class="sub">다른 부서가 보낸 업무가 등록부터 "시작"을 누를 때까지 걸린 시간의 가운데 값. 버튼을 누른 시각 기준이라 실제보다 늦게 잡힐 수 있습니다. 5건 미만이면 표시하지 않습니다.</p>
-      <div class="resp">${depts.map(d => `<div class="rp"><span class="dc dc-${d.id}">${esc(d.code)}</span><span class="rpn">${R[d.id].median == null ? `<span class="sub" style="margin:0">표본 ${R[d.id].n}건</span>` : `<b>${esc(D.dur(R[d.id].median))}</b><small>${R[d.id].n}건</small>`}</span></div>`).join("")}</div></section>`;
+      <div class="resp">${depts.map(d => `<div class="rp"><span class="dc dc-${d.id}">${icon(d.id, 16)}</span><span class="rpn">${R[d.id].median == null ? `<span class="sub" style="margin:0">표본 ${R[d.id].n}건</span>` : `<b>${esc(D.dur(R[d.id].median))}</b><small>${R[d.id].n}건</small>`}</span></div>`).join("")}</div></section>`;
     const P = D.repeats(st.tasks, now, demo ? null : M, 30, 10);
     const rmax = Math.max(1, ...P.rooms.map(x => x.n)), cmax = Math.max(1, ...P.cats.map(x => x.n));
     const rank = (arr, mx, attr) => arr.length ? `<div class="hbars sm">${arr.map(x => `<${attr ? "button type=\"button\"" : "div"} class="hb" ${attr ? attr(x) : ""}><span class="hbl">${esc(x.label)}</span><span class="hbt"><span class="hbf" style="width:${Math.max(3, x.n / mx * 100)}%"></span><b>${x.n}</b></span></${attr ? "button" : "div"}>`).join("")}</div>` : `<div class="empty" style="padding:8px 0">두 번 이상 나온 객실이 없습니다.</div>`;
@@ -744,7 +765,7 @@
     st.svcDate = st.rdate; st.svc = {};
     st.svcUnsub = Store.watchWhere(COL.roomSvc, "date", st.rdate, list => {
       const o = {}; list.forEach(x => { if (x.roomId) o[x.roomId] = x; }); st.svc = o;
-      if (st.tab === "svc" || st.tab === "board" || st.tab === "dash" || st.openRoomId) render();
+      if (st.tab === "svc" || st.tab === "board" || st.tab === "dash" || st.openRoomId) soon();
     }, e => flash("청소 기록 동기화 오류: " + (e && e.message || e)));
   }
   const svcRows = () => { const M = boardM(); return M === DEMO || !(dayDoc(st.rdate) || manualOn(st.rdate)) ? [] : OPS.Svc.rows(M, id => roomState(id, st.rdate), st.svc); };
@@ -769,7 +790,7 @@
       ${d ? houseLine() : ""}
       <p class="sub" style="margin:8px 0 0">재실: 요청 시간대(시작~끝)·청소 종류 입력 → 키핑 확인 → 완료. 요청이 없으면 정비하지 않습니다. 퇴실: 퇴실완 → 키핑 확인 → 완료. 비밀번호를 제공한 객실은 퇴실완 때 비번 변경 업무가 생깁니다.</p>
     </section>`;
-    const tools = (st.role === "FO" || st.role === "MG") ? frontTools(M) : "";
+    const tools = (st.role === "FO" || OPS.isMgr(st.role)) ? frontTools(M) : "";
     if (!d) return head + tools + `<div class="empty">${esc(st.rdate)} 객실 상태가 없습니다. 예약표를 반영하거나 예약을 직접 추가하면 재실·퇴실 목록이 생깁니다.</div>`;
     if (st.role === "HK") return head + hkView(list);
     if (st.role === "FM") return head + `<section class="card"><p class="sub">시설 역할은 보기만 합니다. 청소 중 발견한 시설 이상은 키핑이 객실에서 업무로 등록합니다.</p>${foView(list, true)}</section>`;
@@ -796,7 +817,7 @@
     const M = boardM();
     if (M === DEMO && st.store !== "db") return connCard("불출·분실물");
     if (M === DEMO) return `<section class="card later-box"><h2>불출·분실물</h2><p class="sub">객실이 등록되어야 씁니다. 관리자 설정에서 객실을 등록하거나 예약표를 올려 주십시오.</p></section>`;
-    const D = OPS.Desk, role = st.role, fo = role === "FO" || role === "MG", hk = role === "HK" || role === "MG";
+    const D = OPS.Desk, role = st.role, fo = role === "FO" || OPS.isMgr(role), hk = role === "HK" || OPS.isMgr(role);
     const open = D.sortOpen(st.deliv.filter(D.isOpen)), closed = st.deliv.filter(d => !D.isOpen(d)).sort((a, b) => (b.updatedAt || b.at) - (a.updatedAt || a.at));
     const sum = { big: 0, small: 0 }; st.deliv.filter(d => !d.cancel).forEach(d => { sum.big += (d.items || {}).big || 0; sum.small += (d.items || {}).small || 0; });
     const lbl = d => (multiB() ? (d.building || "") + " " : "") + d.no;
@@ -1011,10 +1032,8 @@
   }
 
   function hkView(list) {
-    const todo = OPS.Svc.hkSort(list.filter(OPS.Svc.hkTodo));
-    const done = list.filter(x => x.s.done).sort((a, b) => b.s.done.at - a.s.done.at);
-    const waitN = list.filter(x => x.type === "stay" && !x.s.reply).length, preN = list.filter(x => x.type === "out" && !x.s.co).length;
-    const n = [0, 1, 2, 3, 4, 5, 6, 8];
+    // v0.20: 단락(퇴실 청소·재실 정비) 안에서 할 것·퇴실 전·완료·요청 없음을 모두 보인다. 완료해도 사라지지 않는다.
+    const n = [0, 1, 2, 3, 4, 5, 6, 8], byNo = (a, b) => (+a.r.no - +b.r.no);
     const row = x => {
       const s = x.s, need = OPS.Svc.hkNeedsAck(x);
       const what = x.type === "out" ? `퇴실 ${esc(tAt(s.co))}${s.prio ? ` · <b class="warnt">${esc(s.prio.time)} 입실 우선</b>` : x.sameDayIn ? ` · <b class="warnt">당일 입실</b>` : ""}${s.cleaned ? ` · 청소 끝 ${esc(tAt(s.cleaned))}` : s.start ? ` · 청소 중` : ""}` : s.reply.type === "time" ? `<b>${esc(s.reply.window)}</b> · ${esc(s.reply.kinds ? OPS.Svc.reqText(x) : x.kind)}` : "청소 X · 요청만";
@@ -1027,14 +1046,28 @@
           ${stageBtn}<button type="button" class="btn sm ${x.type === "out" && s.cleaned ? "main" : ""}" data-svc="done" data-id="${esc(x.id)}">${x.type === "out" ? "점검 완료·입실 가능" : "완료"}</button></div>
       </div>`;
     };
-    // 아직 퇴실완이 안 된 퇴실 객실: 방문했는데 손님이 있으면 프론트에 알린다(톡방의 "아직 퇴실 안 하셨다고 합니다")
-    const pre = list.filter(x => x.type === "out" && !x.s.co && !x.s.ext).sort((a, b) => (+a.r.no - +b.r.no));
+    // 퇴실완 전: 방문했는데 손님이 있으면 프론트에 알린다(톡방의 "아직 퇴실 안 하셨다고 합니다")
     const preRow = x => `<div class="srow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${chip(x)}${x.s.prio ? `<span class="chip k">${esc(x.s.prio.time)} 입실 우선</span>` : ""}</div>
       <div class="sa">${x.s.stillIn && OPS.Svc.foNeeds(x) ? `<span class="w warnt">프론트 답 기다리는 중 (${esc(tAt(x.s.stillIn))} 알림)</span>` : `<button type="button" class="btn sm" data-svc="stillin" data-id="${esc(x.id)}">아직 손님 있음 → 프론트에 알림</button>`}</div></div>`;
-    return `<section class="card"><h2>오늘 할 청소 <span class="c">${todo.length}</span></h2><p class="sub">당일 입실 퇴실 → 퇴실 → 재실 요청 시간순 → 요청만. 깜빡이는 줄은 새로 들어온 내용이니 확인을 눌러 주십시오. 재실 요청 없음 ${waitN}실(정비 안 함), 퇴실 전 ${preN}실은 아직 목록에 없습니다.</p>
-      ${todo.length ? `<div class="slist">${todo.map(row).join("")}</div>` : `<div class="empty">지금 할 청소가 없습니다.</div>`}</section>
-      ${pre.length ? `<section class="card"><h2>퇴실 전 <span class="c">${pre.length}</span></h2><p class="sub">프론트가 퇴실완을 누르면 위 목록으로 올라갑니다. 방문했는데 손님이 있으면 알림을 눌러 주십시오. 프론트가 레이트·연장으로 답하면 여기 표시됩니다.</p><div class="slist">${pre.map(preRow).join("")}</div></section>` : ""}
-      <section class="card"><h2>완료 <span class="c">${done.length}</span></h2>${done.length ? `<div class="slist">${done.map(x => `<div class="srow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b><span>${esc(x.type === "out" ? "퇴실" : x.kind)}</span>${ackLine(x)}<button type="button" class="lnk" data-svc="undone" data-id="${esc(x.id)}">완료 취소</button></div></div>`).join("")}</div>` : `<div class="empty">아직 없습니다.</div>`}</section>`;
+    const doneRow = x => { const r = x.s.reply; const what = x.type === "out" ? "퇴실" : r && r.window ? r.window + " · " + (r.kinds ? OPS.Svc.reqText(x) : x.kind) : x.kind;
+      return `<div class="srow donerow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${chip(x)}<span class="w" style="display:inline">${esc(what)}</span>${ackLine(x)}<button type="button" class="lnk" data-svc="undone" data-id="${esc(x.id)}">완료 취소</button></div></div>`; };
+    const offRow = x => `<div class="srow donerow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${chip(x)}${x.type === "stay" ? `<span class="w" style="display:inline">${esc(x.kind)}</span>` : ""}</div></div>`;
+    const grp = (title, arr, fn, note) => arr.length ? `<h4 class="sgh">${esc(title)} <span class="c">${arr.length}</span>${note ? `<small>${esc(note)}</small>` : ""}</h4><div class="slist">${arr.map(fn).join("")}</div>` : "";
+    const outs = list.filter(x => x.type === "out"), stays = list.filter(x => x.type === "stay");
+    const oTodo = OPS.Svc.hkSort(outs.filter(OPS.Svc.hkTodo));
+    const oPre = outs.filter(x => !x.s.co && !x.s.ext && !x.s.done).sort(byNo);
+    const oExt = outs.filter(x => x.s.ext && !x.s.done).sort(byNo);
+    const oDone = outs.filter(x => x.s.done).sort((a, b) => b.s.done.at - a.s.done.at);
+    const sTodo = OPS.Svc.hkSort(stays.filter(OPS.Svc.hkTodo));
+    const sDone = stays.filter(x => x.s.done).sort((a, b) => b.s.done.at - a.s.done.at);
+    const sOff = stays.filter(x => !x.s.done && !OPS.Svc.hkTodo(x)).sort(byNo);
+    const prog = (d, all) => `<span class="prog" aria-label="완료 ${d} / ${all}"><i style="width:${all ? Math.round(d / all * 100) : 0}%"></i></span><span class="c">완료 ${d} / ${all}</span>`;
+    return `<section class="card"><h2>퇴실 청소 ${prog(oDone.length, outs.length)}</h2><p class="sub">당일 입실·우선 준비 객실이 맨 위입니다. 깜빡이는 줄은 새로 들어온 내용이니 확인을 눌러 주십시오. 완료한 객실도 아래에 남습니다.</p>
+        ${outs.length ? grp("할 청소", oTodo, row) + grp("퇴실 전", oPre, preRow, "프론트가 퇴실완을 누르면 할 청소로 올라갑니다") + grp("완료", oDone, doneRow) + grp("연장·청소 없음", oExt, offRow) : `<div class="empty">오늘 퇴실 객실이 없습니다.</div>`}
+        ${outs.length && !oTodo.length && !oPre.length && oDone.length ? `<p class="okline">퇴실 청소를 모두 마쳤습니다.</p>` : ""}</section>
+      <section class="card"><h2>재실 정비 ${prog(sDone.length, sTodo.length + sDone.length)}</h2><p class="sub">프론트가 적은 요청 시간순입니다. 요청이 없는 객실은 정비하지 않습니다.</p>
+        ${stays.length ? grp("할 정비", sTodo, row) + grp("완료", sDone, doneRow) + (sOff.length ? `<details class="sgd"><summary>요청 없음·청소 X <span class="c">${sOff.length}</span> <small>정비하지 않는 재실 객실</small></summary><div class="slist">${sOff.map(offRow).join("")}</div></details>` : "") : `<div class="empty">오늘 재실 객실이 없습니다.</div>`}
+        ${sTodo.length + sDone.length && !sTodo.length ? `<p class="okline">재실 정비 요청을 모두 마쳤습니다.</p>` : ""}</section>`;
   }
 
   async function svcAct(act, id, el) {
@@ -1242,8 +1275,8 @@
       ${demo ? "" : `<div class="stayb">${staySection(id, st.rdate)}</div>`}
       <div class="acts">
         ${need.length ? `<button type="button" class="btn main" id="roomAck">${esc(OPS.deptName(st.role))} 확인 (${need.length}건)</button>` : ""}
-        ${st.role !== "MG" && !demo ? `<button type="button" class="btn" id="roomNew">이 객실로 업무 등록</button>` : ""}
-        ${(st.role === "FO" || st.role === "MG") && !demo ? `<button type="button" class="btn" id="roomAdd">이 객실 예약 추가</button>` : ""}
+        ${!OPS.isMgr(st.role) && !demo ? `<button type="button" class="btn" id="roomNew">이 객실로 업무 등록</button>` : ""}
+        ${(st.role === "FO" || OPS.isMgr(st.role)) && !demo ? `<button type="button" class="btn" id="roomAdd">이 객실 예약 추가</button>` : ""}
       </div>
       ${(() => { const x = demo ? null : svcRows().find(y => y.id === id); if (!x) return ""; const s = x.s;
         return `<h4>${esc(st.rdate.slice(5).replace("-", "/"))} 청소</h4><div class="rs">${chip(x)}${x.type === "stay" ? `<span class="chip k">${esc(x.kind)}</span>` : ""}${s.reply && s.reply.window ? `<span class="chip k">${esc(s.reply.window)}</span>` : ""}${s.pwGiven ? `<span class="chip warn">비번 제공</span>` : ""}${ackLine(x)}</div>${s.reply && (s.reply.items || s.reply.kinds) ? `<div class="w">요청: ${esc(OPS.Svc.reqText(x))}</div>` : ""}<button type="button" class="lnk" style="margin:4px 0 0" id="goSvc">청소·재실 탭에서 처리</button>`; })()}
@@ -1288,7 +1321,7 @@
     return Array.from(new Set(out));
   }
   function settingsView() {
-    if (st.role !== "MG") return `<section class="card later-box"><h2>설정</h2><p class="sub">관리자 역할에서만 열립니다.</p></section>`;
+    if (st.role !== "MG") return `<section class="card later-box"><h2>설정</h2><p class="sub">관리자 역할에서만 열립니다. 지점·객실·직원·분류 설정은 프로그램 관리자(소유자) 전용입니다${st.role === "MN" ? ". 매니지먼트는 업무·통계·청소·불출은 모두 다룰 수 있습니다" : ""}.</p></section>`;
     const S = st.settings || {}, M = st.master;
     const staffRows = DEPT_W.map(d => {
       const list = st.staff.filter(x => x.dept === d.id).sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0) || String(a.name).localeCompare(b.name));
@@ -1300,8 +1333,8 @@
         <form id="propForm" class="new">
           <div class="row2"><label class="f">지점 이름<input id="sName" maxlength="40" value="${esc(S.propertyName || "")}" placeholder="예: UH FLAT 서초"></label>
           <label class="f">지점 표시(영문·숫자)<input id="sPid" maxlength="20" value="${esc(S.propertyId || OPS.CTX.propertyId)}" pattern="[a-z0-9-]{1,20}"></label></div>
-          <div class="row2"><label class="f">주간 파트 시작<input id="sDay" type="time" value="${esc(S.dayStart || OPS.CTX.dayStart)}"></label>
-          <label class="f">야간 파트 시작<input id="sNight" type="time" value="${esc(S.nightStart || OPS.CTX.nightStart)}"></label></div>
+          <div class="row2"><label class="f">밝은 화면 시작(자동 밝기)<input id="sDay" type="time" value="${esc(S.dayStart || OPS.CTX.dayStart)}"></label>
+          <label class="f">어두운 화면 시작(자동 밝기)<input id="sNight" type="time" value="${esc(S.nightStart || OPS.CTX.nightStart)}"></label></div>
           <label class="f">비번 변경 담당 (비밀번호 제공 객실 퇴실 시)<select id="sPw">${OPS.DEPTS.filter(d => d.id !== "MG").map(d => `<option value="${d.id}" ${(S.pwDept || OPS.CTX.pwDept) === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></label>
           <button class="btn main" type="submit">저장</button>
         </form></section>
@@ -1378,14 +1411,14 @@
   // ---------- 이력 ----------
   function logView() {
     const byId = new Map(st.tasks.map(t => [t.id, t]));
-    const mineT = t => st.role === "MG" || (t && (t.fromDept === st.role || t.toDept === st.role));
+    const mineT = t => OPS.isMgr(st.role) || (t && (t.fromDept === st.role || t.toDept === st.role));
     const ev = st.events.filter(e => mineT(byId.get(e.taskId))).sort((a, b) => b.at - a.at).slice(0, 150);
     const rows = ev.map(e => {
       const t = byId.get(e.taskId);
       const what = e.field ? `${esc(e.field)}: ${esc(e.from)} → ${esc(e.to)}` : e.from || e.to ? `${esc(e.from || "")}${e.from ? " → " : ""}${esc(e.to)}` : "";
       return `<tr><td class="st">${esc(hm(e.at))}</td><td>${esc(nameOf(e.uid, e.by))}<br><span class="sub">${esc(OPS.deptName(e.role))}</span></td><td>${esc(e.action)}</td><td>${t ? `<a href="#${esc(st.role.toLowerCase())}" data-open="${esc(t.id)}">${esc(t.room ? t.room + " · " : "")}${esc(t.title)}</a>` : "(삭제된 업무)"}</td><td>${what}${e.note ? `<br><span class="sub">${esc(e.note)}</span>` : ""}</td></tr>`;
     }).join("");
-    return `<section class="card"><h2>변경 이력 <span class="c">${st.events.length}</span></h2><p class="sub">${st.role === "MG" ? "모든 등록·상태 이동·수정·댓글. 최근 150건." : esc(OPS.deptName(st.role)) + "가 요청했거나 받은 업무의 이력만 보입니다. 최근 150건."}</p>
+    return `<section class="card"><h2>변경 이력 <span class="c">${st.events.length}</span></h2><p class="sub">${OPS.isMgr(st.role) ? "모든 등록·상태 이동·수정·댓글. 최근 150건." : esc(OPS.deptName(st.role)) + "가 요청했거나 받은 업무의 이력만 보입니다. 최근 150건."}</p>
       ${ev.length ? `<div class="scroll"><table><thead><tr><th>시각</th><th>작성자</th><th>동작</th><th>업무</th><th>내용</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty">아직 기록이 없습니다.</div>`}</section>`;
   }
 
@@ -1395,10 +1428,60 @@
   }
 
   // ---------- 그리기 ----------
+  // ---------- 잠금 화면(v0.20) ----------
+  // 로그인 화면으로 돌아가지 않는다. 큰 시계와 부서별 할 일 숫자만 보이고, 객실 번호·내용은 가린다.
+  // 풀 때 "누가 씁니까"에서 부서를 고르면 바로 그 부서 화면으로 열린다. 보안 장치가 아니라 공용 기기 가림막이다.
+  function lockOn(on) {
+    if (on && OPS.Auth) { OPS.Auth.lock(); return; }   // [web] 잠금은 로그아웃(PIN 화면으로)
+    st.locked = !!on; mem.set("locked", on ? "1" : "");
+    if (on) { drawer(false); try { if ($("dlg").open) $("dlg").close(); } catch (e) {} st.svcEdit = null; }
+    lockView(); if (!on) render();
+  }
+  function lockView() {
+    const L = $("lock"), sh = document.querySelector(".shell"), hd = document.querySelector("header"), ft = document.querySelector("footer");
+    if (!L) return;
+    [sh, hd, ft].forEach(x => { if (x) x.inert = !!st.locked; });
+    document.body.classList.toggle("locked", !!st.locked);
+    if (!st.locked) { L.hidden = true; L.innerHTML = ""; return; }
+    // v0.21: 첫 화면은 부서 고르기만. 숫자·객실 정보는 없다. 관리자는 오른쪽 위 전용 입구
+    const showAdmin = adminOk();
+    L.innerHTML = `<div class="lkbar">${showAdmin ? `<button type="button" class="lkadmin" data-unlock="MG">${icon("MG", 20)}<span>관리자</span></button>` : ""}</div>
+      <div class="lk">
+      <div class="lkhead"><b>OPS</b><span>${esc(OPS.CTX.propertyName ? OPS.CTX.propertyName + " · " : "")}통합 업무 시스템</span><span class="lkt" data-noi18n id="lockD"></span></div>
+      <p class="lkq">부서를 선택해 주십시오</p>
+      <div class="lkd">${STAFF_DEPTS().map(d => `<button type="button" data-unlock="${d.id}" class="lk-${d.id}"><span class="ic">${icon(d.id, 48)}</span><b>${esc(d.name)}</b><small>${esc(d.en)}</small></button>`).join("")}</div>
+      ${st.me ? `<p class="lkf">로그인: ${esc(nameOf(st.me.id, "") || "계정")}</p>` : ""}
+    </div>`;
+    L.hidden = false;
+    tickClock();
+  }
+  function enterAs(r) {
+    if (r === "MG" && !adminOk()) { flash("관리자 화면은 이 시스템 소유자만 들어갈 수 있습니다."); return; }
+    st.locked = false; mem.set("locked", ""); try { sessionStorage.setItem("opsEntered", "1"); } catch (e) {}
+    lockView(); switchRole(r);
+  }
+  // 실시간 수신이 한꺼번에 여러 번 와도 화면은 한 프레임에 한 번만 다시 그린다(v0.20). 숨긴 탭에서는 돌아올 때 그린다.
+  let soonId = 0;
+  function soon() { if (soonId) return; const f = () => { soonId = 0; render(); }; soonId = (window.requestAnimationFrame || (fn => setTimeout(fn, 16)))(f); }
+  function switchRole(r) { if (!canRole(r)) { flash(OPS.deptName(OPS.Auth.dept) + " 로그인은 다른 부서로 바꿀 수 없습니다. 잠금 후 해당 부서 계정으로 들어오십시오."); return; } st.role = r;   /* [web] */ fitTab(); mem.set("role", st.role); history.replaceState(null, "", "#" + st.role.toLowerCase()); st.formTo = null; render(); toTop(); }
+
+  // ---------- 야간 검수(NIGHT AUDIT) 연결(v0.20) ----------
+  // 프론트·관리자 = 서초 직원용. 이 시스템 소유자에게는 관리자용도 보인다. 열리는지는 각 화면의 공유 설정이 정한다.
+  const NA_LINKS = { staff: "https://claude.ai/artifact/B4G15SSoyixAr1EscfmZtn", admin: "https://claude.ai/artifact/Ju83Y5zkPHigfGubuHL7ZS" };
+  function extLinks() {
+    const box = $("extLinks"), h = $("extH"); if (!box) return;
+    const show = st.role === "FO" || OPS.isMgr(st.role);
+    box.hidden = !show; if (h) h.hidden = !show;
+    if (!show) { box.innerHTML = ""; return; }
+    const a = (url, t, sub) => `<a class="extlink" href="${url}" target="_blank" rel="noopener noreferrer"><span>${esc(t)}<small>${esc(sub)}</small></span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>`;
+    box.innerHTML = a(NA_LINKS.staff, "야간 검수 (직원용)", "UHC NIGHT AUDIT SEOCHO · 새 창") + (st.owner ? a(NA_LINKS.admin, "야간 검수 (관리자용)", "소유자에게만 보임 · 새 창") : "");
+  }
+
   function render() {
     renderHead();
+    extLinks();
     connBanner();
-    const mine = t => st.role === "MG" || (t.toDept === st.role && t.status !== "완료 대기") || (t.fromDept === st.role && t.status === "완료 대기");
+    const mine = t => OPS.isMgr(st.role) || (t.toDept === st.role && t.status !== "완료 대기") || (t.fromDept === st.role && t.status === "완료 대기");
     const hot = st.tasks.filter(t => Core.isOpen(t) && t.priority === "긴급" && t.status !== "보류" && mine(t));
     const a = $("alert");
     a.style.display = hot.length ? "block" : "none";
@@ -1421,6 +1504,7 @@
       if ($("fBld") && st.prefill.b) $("fBld").value = st.prefill.b;
       $("fRoom").value = st.prefill.no; st.prefill = null; $("fTitle").focus();
     }
+    if (st.locked) lockView();
   }
   // 입력 중인 폼(data-keep)은 다시 그려도 값과 커서를 지킨다(다른 사람이 저장하면 화면이 다시 그려짐)
   function keepInputs() {
@@ -1498,8 +1582,12 @@
     if (e.target.closest("#menuBtn") || e.target.closest("#whoBtn")) { drawer(!document.body.classList.contains("drawer")); return; }
     if (e.target.closest("#sideX") || e.target.id === "scrim") { drawer(false); return; }
     if (e.target.closest("#tabs [data-tab], #laterTabs [data-tab]")) drawer(false);
+    const ul = e.target.closest("[data-unlock]");
+    if (ul) { enterAs(ul.dataset.unlock); return; }
+    if (e.target.closest("#adminBtn")) { if (st.role === "MG") return; enterAs("MG"); return; }
+    if (e.target.closest("#lockBtn")) { lockOn(true); return; }
     const r = e.target.closest("[data-role]");
-    if (r) { if (!canRole(r.dataset.role)) { flash(OPS.deptName(OPS.Auth.dept) + " 로그인은 다른 부서로 바꿀 수 없습니다. 잠금 후 해당 부서 PIN으로 들어오십시오."); return; } st.role = r.dataset.role; fitTab(); mem.set("role", st.role); history.replaceState(null, "", "#" + st.role.toLowerCase()); st.formTo = null; render(); toTop(); return; }
+    if (r) { if (r.dataset.role === "MG" && !adminOk()) { flash("관리자 화면은 이 시스템 소유자만 들어갈 수 있습니다."); return; } switchRole(r.dataset.role); return; }
     const tb = e.target.closest("[data-tab]");
     if (tb) { st.tab = tb.dataset.tab; st.bf = ""; render(); toTop(); return; }
     const gt = e.target.closest("[data-gotab]");
@@ -1607,15 +1695,21 @@
     const d = new Date(), en = mem.get("lang", "ko") === "en";
     const t = p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds());
     if ($("clockT")) $("clockT").textContent = t;
-    const part = OPS.guessPart(d) === "night" ? (en ? "Night shift" : "야간 파트") : (en ? "Day shift" : "주간 파트");
+    // 자동 잠금: 이 기기에서 정한 시간 동안 아무도 만지지 않으면(입력 중·창 열림이면 기다림)
+    const al = +mem.get("autoLock", "0");
+    if (al && !st.locked && Date.now() - lastTouch > al * 60000 && !($("dlg") && $("dlg").open) && !st.svcEdit) {
+      const ae = document.activeElement;
+      if (!(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) lockOn(true);
+    }
+    if ($("lockD")) { $("lockD").textContent = p2(d.getHours()) + ":" + p2(d.getMinutes()) + " · " + (en ? (WD_EN[d.getDay()] + ", " + (d.getMonth() + 1) + "/" + d.getDate()) : ((d.getMonth() + 1) + "월 " + d.getDate() + "일 (" + WD_KO[d.getDay()] + ")")); }
     const day = (d.getMonth() + 1) + "/" + d.getDate() + " (" + (en ? WD_EN : WD_KO)[d.getDay()] + ")";
     const rolled = OPS.ymd(d) !== openDay;
     const cd = $("clockD");
     if (cd) {
-      const key = day + part + rolled + en;
+      const key = day + rolled + en;
       if (cd.dataset.k !== key) {
         cd.dataset.k = key;
-        cd.innerHTML = esc(day) + (rolled ? `<button type="button" class="roll" id="clockRoll" title="${en ? "The date changed. Reload to switch today's lists to the new day." : "날짜가 바뀌었습니다. 다시 열면 오늘 기준 목록으로 바뀝니다."}">${en ? "Reload" : "다시 열기"}</button>` : esc(" · " + part));
+        cd.innerHTML = esc(day) + (rolled ? `<button type="button" class="roll" id="clockRoll" title="${en ? "The date changed. Reload to switch today's lists to the new day." : "날짜가 바뀌었습니다. 다시 열면 오늘 기준 목록으로 바뀝니다."}">${en ? "Reload" : "다시 열기"}</button>` : "");
       }
     }
     document.querySelectorAll("[data-now]").forEach(x => { x.textContent = hm(d.getTime()); });
@@ -1736,7 +1830,7 @@
   });
   window.addEventListener("hashchange", () => {
     const h = location.hash.slice(1).toUpperCase();
-    if (OPS.DEPTS.some(d => d.id === h) && h !== st.role && canRole(h)) { st.role = h; fitTab(); render(); }
+    if (OPS.DEPTS.some(d => d.id === h) && h !== st.role && (h !== "MG" || adminOk()) && canRole(h)) { st.role = h; fitTab(); render(); }
   });
 
   function syncBadge() {
@@ -1753,6 +1847,7 @@
   $("myPart").innerHTML = OPS.PARTS.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
   $("myPart").value = mem.get("part", OPS.guessPart());
   $("myName").value = mem.get("name", "");
+  if ($("autoLock")) { $("autoLock").value = mem.get("autoLock", "0"); $("autoLock").addEventListener("change", e => { mem.set("autoLock", e.target.value); }); }
   render();
   (async () => {
     // 로그인한 사람(계정). 못 받으면 null → 이름 칸 입력을 쓴다
@@ -1766,8 +1861,14 @@
           try { const p = await UAPI.me(); if (p && p.name) st.names[id] = p.name; } catch (e) {}
           const nm = $("myName"); nm.placeholder = "로그인: " + (st.names[id] || "계정") + " (다른 표시 이름은 여기에)";
         }
+        try { st.owner = typeof UAPI.isOwner === "function" ? !!(await UAPI.isOwner()) : false; } catch (e) { st.owner = false; }
+        if (st.role === "MG" && !st.owner) { st.role = "FO"; mem.set("role", "FO"); history.replaceState(null, "", "#fo"); }
+        extLinks(); renderHead(); if (st.locked) lockView();
       }
     } catch (e) { UAPI = null; }
+    st.uReady = true;
+    if (st.role === "MG" && !adminOk()) { st.role = "FO"; mem.set("role", "FO"); history.replaceState(null, "", "#fo"); }
+    renderHead(); if (st.locked) lockView();
     const kind = await Store.init();
     st.store = kind;
     // 공유 DB가 열려도 계정의 공유 수준이 보기 전용이면 쓰기가 거절된다(플랫폼 규칙). 미리 묻고 화면에 알린다
@@ -1799,19 +1900,19 @@
       ? "기록은 이 페이지의 공유 DB에 저장됩니다. 1인 시험판이며 역할은 화면 위에서 바꿉니다. 실제 투숙객 정보는 넣지 마십시오."
       : "공유 DB에 연결되지 않아 이 브라우저에만 저장됩니다. 다른 기기에서는 보이지 않습니다.";
     const err = e => flash("실시간 동기화 오류: " + (e && e.message || e));
-    Store.watch(COL.tasks, list => { st.tasks = list; render(); }, err);
-    Store.watch(COL.events, list => { st.events = list; if (st.tab === "log" || st.openId) render(); }, err);
-    Store.watch(COL.settings, list => { applySettings(list.find(x => x.id === "main")); render(); }, err);
-    Store.watch(COL.manualStays, list => { st.manual = list; render(); }, err);
+    Store.watch(COL.tasks, list => { st.tasks = list; soon(); }, err);
+    Store.watch(COL.events, list => { st.events = list; if (st.tab === "log" || st.openId) soon(); }, err);
+    Store.watch(COL.settings, list => { applySettings(list.find(x => x.id === "main")); soon(); }, err);
+    Store.watch(COL.manualStays, list => { st.manual = list; soon(); }, err);
     Store.watch(COL.stayIndex, list => { st.stayIdx = list.find(x => x.id === "main") || null; if (st.openRoomId && $("dlg").open) openRoom(st.openRoomId, true); }, err);
     // 불출은 오늘 것만, 재고는 오늘 문서, 분실물은 전체(건수가 적다)
     const today0 = OPS.ymd(Date.now());
-    Store.watchWhere(COL.deliveries, "date", today0, list => { st.deliv = list; if (st.tab === "desk" || st.tab === "board" || st.tab === "dash") render(); }, err);
-    Store.watchWhere(COL.stock, "date", today0, list => { const o = {}; list.forEach(x => { o[x.b] = x; }); st.stock = o; if (st.tab === "desk" || st.tab === "svc") render(); }, err);
-    Store.watch(COL.lostFound, list => { st.lost = list; if (st.tab === "desk" || st.tab === "dash") render(); }, err);
-    Store.watch(COL.roomNotes, list => { const o = {}; list.forEach(x => { o[x.id] = x; }); st.notes = o; if (st.tab === "board" || st.openRoomId) render(); }, err);
-    Store.watch(COL.staff, list => { st.staff = list; render(); }, err);
-    Store.watch(COL.property, list => { const m = list.find(x => x.id === "main"); st.master = m && m.rooms ? m : null; render(); }, err);
-    Store.watch(COL.roomDays, list => { const o = {}; list.forEach(x => { o[x.id] = x; }); st.days = o; if (st.tab === "rooms" || st.tab === "board" || st.tab === "dash") render(); }, err);
+    Store.watchWhere(COL.deliveries, "date", today0, list => { st.deliv = list; if (st.tab === "desk" || st.tab === "board" || st.tab === "dash") soon(); }, err);
+    Store.watchWhere(COL.stock, "date", today0, list => { const o = {}; list.forEach(x => { o[x.b] = x; }); st.stock = o; if (st.tab === "desk" || st.tab === "svc") soon(); }, err);
+    Store.watch(COL.lostFound, list => { st.lost = list; if (st.tab === "desk" || st.tab === "dash") soon(); }, err);
+    Store.watch(COL.roomNotes, list => { const o = {}; list.forEach(x => { o[x.id] = x; }); st.notes = o; if (st.tab === "board" || st.openRoomId) soon(); }, err);
+    Store.watch(COL.staff, list => { st.staff = list; soon(); }, err);
+    Store.watch(COL.property, list => { const m = list.find(x => x.id === "main"); st.master = m && m.rooms ? m : null; soon(); }, err);
+    Store.watch(COL.roomDays, list => { const o = {}; list.forEach(x => { o[x.id] = x; }); st.days = o; if (st.tab === "rooms" || st.tab === "board" || st.tab === "dash") soon(); }, err);
   })();
 }

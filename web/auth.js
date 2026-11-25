@@ -8,7 +8,8 @@
   const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, storageKey: "ops-auth" } });
   OPS.SB = sb;
 
-  const APP_SCRIPTS = ["model", "store", "core", "seocho-ct", "office-crypto", "rooms", "layout", "stays", "i18n", "desk", "svc", "dash", "app"];
+  // 아티팩트 index.html의 스크립트 순서를 빌드(sync.ps1)가 window.OPS_APP_SCRIPTS로 넣어 준다
+  const APP_SCRIPTS = window.OPS_APP_SCRIPTS || [];
   const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
   function setSession(user) {
@@ -34,7 +35,7 @@
     (function next(i) {
       if (i >= APP_SCRIPTS.length) { addLockButton(); return; }
       const s = document.createElement("script");
-      s.src = "js/" + APP_SCRIPTS[i] + ".js";
+      s.src = APP_SCRIPTS[i];
       s.onload = () => next(i + 1);
       s.onerror = () => { alert("화면 파일을 불러오지 못했습니다: " + s.src); };
       document.body.appendChild(s);

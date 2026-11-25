@@ -1,6 +1,7 @@
 /* 객실 청소 흐름(서초 청소표 분석 기반, 2026-11-25 사용자 확인 반영)
-   재실: 프론트 안내 발송 → 고객 회신(시간 지정 / 청소 X / 무응답) → 키핑 확인 → 완료
-         무응답은 청소하지 않는다(다음 날로 넘기지 않음).
+   재실(v0.19): 청소표의 재실 객실에 프론트가 "몇 시~몇 시 · 어떤 청소"만 적는다 → 키핑 확인 → 완료
+         시간이 적힌 것 = 그 시간대 정비 요청(서초 청소표 기준, 사용자 확정). 안 적으면 청소하지 않는다.
+         예전 기록(발송·무응답)은 읽기만 한다.
          청소 X여도 쓰레기·수건 같은 요청이 있으면 키핑 일로 남는다.
    퇴실: 프론트 "퇴실완" → 키핑 확인 → 완료(사용 수건 수). 비밀번호를 제공한 객실은 퇴실완 때 "비번 변경" 업무가 생긴다.
    "확인" = 키핑이 추가 내용(시간·요청·퇴실완)을 확인했다는 표시. 내용이 바뀌면 다시 확인 대상이 된다.
@@ -27,7 +28,7 @@
     const s = row.s || {};
     if (row.type === "stay") {
       if (s.done) return "완료";
-      if (!s.reply) return s.sent ? "회신 대기" : "발송 전";
+      if (!s.reply) return "요청 없음";
       if (s.reply.type === "time") return "시간 확정";
       if (s.reply.type === "refuse") return s.reply.items ? "쓰레기·수건만" : "청소 없음";
       if (s.reply.type === "none") return "무응답·청소 없음";
@@ -67,6 +68,15 @@
     if (s.done) return false;
     return row.type === "out" ? !!s.co && !s.ext : stayWork(s);
   }
+
+  // 재실 요청 종류. "정비"는 청소표에 적힌 종류(재실청소·전체재실)로 보인다
+  const REQ_KINDS = ["정비", "쓰레기 수거", "수건 교체", "침구 교체", "비품 전달"];
+  function reqText(row) {
+    const r = (row.s || {}).reply; if (!r) return "";
+    const k = (r.kinds || []).map(x => x === "정비" ? row.kind : x);
+    return k.join(" + ") + (r.items ? (k.length ? " · " : "") + r.items : "");
+  }
+  const hhmm = v => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || "").trim()); return m && +m[1] < 24 && +m[2] < 60 ? String(+m[1]).padStart(2, "0") + ":" + m[2] : ""; };
 
   const windowStart = w => { const m = /(\d{1,2})(?::(\d{2}))?/.exec(String(w || "")); return m ? +m[1] * 60 + (m[2] ? +m[2] : 0) : 24 * 60; };
 
@@ -120,13 +130,23 @@
   const by = (actor, extra) => Object.assign({ at: Date.now(), by: actor.name || "", uid: actor.uid || "", role: actor.role }, extra || {});
 
   OPS.Svc = {
-    sid, rows, status, foNeeds, hkNeedsAck, hkTodo, hkSort, summary, windowStart, stayWork,
+    sid, rows, status, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, hkTodo, hkSort, summary, windowStart, stayWork,
     send: (date, id, cur, actor, via) => write(date, id, cur, { sent: by(actor, { via: clean(via, 12) }) }, actor, "재실 안내 발송"),
     unsend: (date, id, cur, actor) => write(date, id, cur, { sent: null }, actor, "발송 취소"),
     replyTime: (date, id, cur, actor, window, items) => {
       const w = clean(window, 30);
       if (!w) throw new Error("청소 시간대를 적어 주십시오. 예: 11~13");
       return write(date, id, cur, { reply: by(actor, { type: "time", window: w, items: clean(items, 200) }), done: null }, actor, "회신: 시간 " + w);
+    },
+    // 재실 요청 입력(v0.19): 시작·끝 시각 + 요청 종류(1개 이상) + 짧은 메모(선택)
+    request: (date, id, cur, actor, o) => {
+      const from = hhmm(o && o.from), to = hhmm(o && o.to);
+      if (!from || !to) throw new Error("요청 시간대의 시작과 끝을 골라 주십시오.");
+      if (to <= from) throw new Error("끝 시각이 시작 시각보다 늦어야 합니다.");
+      const kinds = REQ_KINDS.filter(k => ((o && o.kinds) || []).includes(k));
+      if (!kinds.length) throw new Error("요청한 청소를 하나 이상 골라 주십시오.");
+      const w = from + "~" + to, memo = clean(o && o.memo, 100);
+      return write(date, id, cur, { reply: by(actor, { type: "time", window: w, from, to, kinds, items: memo }), done: null }, actor, "재실 요청 " + w + " " + kinds.join("·") + (memo ? " / " + memo : ""));
     },
     replyRefuse: (date, id, cur, actor, items) => write(date, id, cur, { reply: by(actor, { type: "refuse", window: "", items: clean(items, 200) }), done: null }, actor, items ? "회신: 청소 X, " + clean(items, 40) : "회신: 청소 X"),
     replyNone: (date, id, cur, actor) => write(date, id, cur, { reply: by(actor, { type: "none", window: "", items: "" }), done: null }, actor, "무응답(청소 없음)"),

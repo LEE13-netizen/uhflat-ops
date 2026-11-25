@@ -630,36 +630,19 @@ body.drawer .side{transform:none;visibility:visible;transition:transform .22s ea
 .dropmsg span{flex:1;overflow-wrap:anywhere}
 .dropmsg .x{float:none;margin:-8px -2px -8px 0;flex:none}
 
-/* ===== 웹 로그인(부서 PIN) ===== */
-body.locked>header,body.locked>.shell,body.locked>footer{display:none}
-.gate{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;background:var(--bg);overflow-y:auto}
-.gate[hidden]{display:none!important}
-.gbox{width:100%;max-width:420px;display:grid;gap:14px;justify-items:center;text-align:center}
-.glogo{font:700 44px/1 "Barlow Semi Condensed","Noto Sans KR",sans-serif;letter-spacing:.06em}
-.glogo small{display:block;margin-top:6px;font:600 15px "Noto Sans KR",sans-serif;letter-spacing:0;color:var(--muted)}
-.gmsg{font-size:16px;font-weight:600;color:var(--muted);min-height:1.5em}.gmsg.err{color:var(--hot)}
-.gdepts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:100%}
-.gdepts button{min-height:84px;border:1.5px solid var(--line);border-left:7px solid var(--dept,var(--muted));border-radius:14px;background:var(--card);color:var(--ink);cursor:pointer;display:grid;align-content:center;gap:2px;text-align:left;padding:10px 16px}
-.gdepts button b{font-size:20px}.gdepts button span{font:600 14px "Barlow Semi Condensed","Noto Sans KR",sans-serif;color:var(--muted);letter-spacing:.04em}
-.gdepts button[data-role=FO]{--dept:#00727A}.gdepts button[data-role=HK]{--dept:#7A4FB5}.gdepts button[data-role=FM]{--dept:#C46A12}.gdepts button[data-role=MG]{--dept:#4D5B69}
-.gdepts button.own{grid-column:1/-1;min-height:60px;--dept:var(--ink);border-style:dashed;border-left-style:solid}
-.gdepts button:hover{border-color:var(--ink)}
-.gback{border:0;background:none;color:var(--accent);font-weight:600;cursor:pointer;min-height:40px;font-size:15px}
-.gdept{font-size:24px;font-weight:700}.gdept span{font:600 16px "Barlow Semi Condensed",sans-serif;color:var(--muted);margin-left:4px}
-.gdots{display:flex;gap:16px;height:22px;align-items:center}
-.gdots i{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink)}.gdots i.on{background:var(--ink)}
-.gpad{display:grid;grid-template-columns:repeat(3,76px);gap:12px}
-.gpad button{height:76px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:600 30px "Barlow Semi Condensed",sans-serif;cursor:pointer}
-.gpad button.sm{font:600 15px "Noto Sans KR",sans-serif;border-style:dashed}
-.gpad button:active{background:var(--accent-bg)}
-.gfoot{font-size:13.5px;color:var(--muted);margin:6px 0 0}
-#loginWho{background:var(--accent-bg);color:var(--accent);font-weight:600}
-
 /* ===== v0.18 연결 안내 ===== */
 .conn.ro{border-color:var(--warn)}
 .conn .copyrow{display:flex;gap:8px;align-items:center}
 .conn .copyrow input{flex:1;min-width:0;font:inherit;font-size:14px;padding:9px 10px;border-radius:8px;border:1.5px solid var(--line);background:var(--card);color:var(--ink)}
+
+/* ===== v0.19 재실 정비 요청 ===== */
+.sedit.req{display:grid;gap:8px}
+.sedit.req input[type=time]{min-width:7.2em}
+.reqk{display:flex;flex-wrap:wrap;gap:6px}
+.reqk .tg{border:1.5px solid var(--line);border-radius:999px;padding:5px 12px;background:var(--card);cursor:pointer}
+.reqk .tg:has(input:checked){border-color:var(--accent);background:var(--soft);font-weight:600}
 </style>
+<link rel="stylesheet" href="web/web.css">
 </head>
 <body class="locked">
 <header>
@@ -667,7 +650,7 @@ body.locked>header,body.locked>.shell,body.locked>footer{display:none}
     <div class="top">
       <button type="button" class="menubtn" id="menuBtn" aria-controls="side" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>메뉴</span><span class="mbadge" id="menuBadge" hidden></span></button>
       <button type="button" class="whoami" id="whoBtn" aria-label="부서 바꾸기"></button>
-      <div class="mark">OPS<small>통합 업무 시스템 · v0.18 · 1인 시험판</small></div>
+      <div class="mark">OPS<small>통합 업무 시스템 · v0.19 · 1인 시험판</small></div>
       <div class="clock" id="clock" data-noi18n aria-live="off"><b id="clockT">--:--:--</b><span id="clockD"></span></div>
       <div class="me">
         <span class="badge" id="where">저장소 연결 중</span>
@@ -703,8 +686,9 @@ body.locked>header,body.locked>.shell,body.locked>footer{display:none}
 <div class="dropzone" id="dropzone" hidden></div>
 <dialog id="dlg"><div class="dlg" id="dlgBody"></div></dialog>
 <div id="gate" class="gate"><div class="gbox"><div class="glogo">OPS<small>통합 업무 시스템</small></div><div class="gmsg">불러오는 중…</div></div></div>
+<script>window.OPS_APP_SCRIPTS=["js/model.js","js/store.js","web/store-supabase.js","js/core.js","js/seocho-ct.js","js/office-crypto.js","js/rooms.js","js/layout.js","js/stays.js","js/i18n.js","js/desk.js","js/svc.js","js/dash.js","js/app.js"];</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="js/config.js"></script>
-<script src="js/auth.js"></script>
+<script src="web/config.js"></script>
+<script src="web/auth.js"></script>
 </body>
 </html>

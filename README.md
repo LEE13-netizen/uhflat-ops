@@ -1,7 +1,9 @@
 # OPS 통합 업무 시스템 (웹판)
 
-claude.ai 아티팩트 "통합 업무 시스템" v0.18을 일반 웹사이트로 옮긴 판입니다.
+claude.ai 아티팩트 "통합 업무 시스템"을 일반 웹사이트로 옮긴 판입니다(현재 아티팩트 v0.19 기준).
 정적 파일(HTML·JS)만으로 동작하며, 데이터와 로그인은 Supabase가 맡습니다.
+
+**기능 개발은 아티팩트에서 하고, 웹판은 `sync.ps1`로 받아 와서 맞춥니다. 방법은 [SYNC.md](SYNC.md).**
 
 ## 로그인
 - 첫 화면에서 부서를 고르고 PIN 4자리를 누릅니다.
@@ -12,13 +14,15 @@ claude.ai 아티팩트 "통합 업무 시스템" v0.18을 일반 웹사이트로
 - PIN은 코드에 들어 있지 않습니다. Supabase Auth에 암호화되어 저장됩니다.
 
 ## 구성
-| 파일 | 역할 |
+| 위치 | 역할 |
 |---|---|
-| `index.html` | 화면 틀과 스타일, PIN 화면 |
-| `js/config.js` | Supabase 주소, 공개(publishable) 키, 부서 계정 목록 |
-| `js/auth.js` | PIN 로그인, 로그인 후 앱 스크립트 불러오기, 잠금 |
-| `js/store.js` | 저장소 창구. 웹에서는 Supabase 표 `ops_docs` + Realtime |
-| 나머지 `js/*.js` | 원본 아티팩트의 업무 화면과 엔진 |
+| `artifact/` | 아티팩트 원본 파일 그대로 |
+| `web/config.js` | Supabase 주소, 공개(publishable) 키, 부서 계정 목록 |
+| `web/auth.js` | PIN 로그인, 로그인 후 앱 스크립트 불러오기, 잠금 |
+| `web/store-supabase.js` | 저장소 창구를 Supabase 표 `ops_docs` + Realtime으로 교체 |
+| `web/web.css` | PIN 화면 스타일 |
+| `sync.ps1` | artifact + web → 배포용 `index.html`, `js/` 생성 |
+| `index.html`, `js/` | 배포 결과물 (자동 생성, 직접 고치지 않음) |
 
 ## Supabase
 - 표: `public.ops_docs (col, id, data jsonb)`. 원본의 모음(tasks, roomDays 등)을 `col`로 나눠 담습니다.

@@ -2,7 +2,7 @@
 (function (G) {
   const OPS = G.OPS = G.OPS || {};
 
-  OPS.VERSION = "v0.18";
+  OPS.VERSION = "v0.19";
 
   // 현재 지점·설정 값(설정 화면에서 바뀜)
   OPS.CTX = { propertyId: "p1", propertyName: "", dayStart: "07:00", nightStart: "22:00", pwDept: "FM" };

@@ -76,66 +76,10 @@
     };
   }
 
-  // 웹 배포용: Supabase 표 하나(ops_docs: col, id, data)에 모든 모음을 담는다. 실시간은 Realtime 구독.
-  function makeSupabaseBackend(sb) {
-    const T = "ops_docs";
-    const newId = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    const row = r => Object.assign({ id: r.id }, r.data || {});
-    const fail = (e, what) => { const err = new Error((what || "저장") + " 실패: " + (e && e.message || e)); err.code = e && e.code; return err; };
-    async function fetchAll(c) {
-      const out = []; const N = 1000;
-      for (let from = 0; ; from += N) {
-        const { data, error } = await sb.from(T).select("id,data").eq("col", c).range(from, from + N - 1);
-        if (error) throw fail(error, "불러오기");
-        out.push(...data.map(row));
-        if (data.length < N) break;
-      }
-      return out;
-    }
-    // 같은 모음을 여러 화면이 지켜보면 구독 하나를 나눠 쓴다
-    const hubs = {};
-    function hub(c) {
-      if (hubs[c]) return hubs[c];
-      const h = hubs[c] = { map: new Map(), fns: new Set(), ready: false, errs: new Set() };
-      const emit = () => { const list = Array.from(h.map.values()); h.fns.forEach(fn => { try { fn(list); } catch (e) {} }); };
-      h.emit = emit;
-      const load = () => fetchAll(c).then(list => { h.map = new Map(list.map(x => [x.id, x])); h.ready = true; emit(); }).catch(e => h.errs.forEach(f => f(e)));
-      h.ch = sb.channel("ops:" + c)
-        .on("postgres_changes", { event: "*", schema: "public", table: T, filter: "col=eq." + c }, p => {
-          if (p.eventType === "DELETE") { const id = p.old && p.old.id; if (id) h.map.delete(id); }
-          else if (p.new) h.map.set(p.new.id, row(p.new));
-          emit();
-        })
-        .subscribe(s => { if (s === "SUBSCRIBED") load(); if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") h.errs.forEach(f => f(new Error("실시간 연결이 끊겼습니다(" + s + ")"))); });
-      return h;
-    }
-    // 내 저장은 실시간 알림을 기다리지 않고 화면에 바로 반영
-    const local = (c, id, v) => { const h = hubs[c]; if (!h) return; if (v == null) h.map.delete(id); else h.map.set(id, Object.assign({ id }, v)); h.emit(); };
-    return {
-      kind: "db",
-      async add(c, data) { const id = newId(); const { error } = await sb.from(T).insert({ col: c, id, data }); if (error) throw fail(error); local(c, id, data); return id; },
-      async set(c, id, data) { const { error } = await sb.from(T).upsert({ col: c, id, data }); if (error) throw fail(error); local(c, id, data); },
-      async update(c, id, patch) {
-        const { error } = await sb.rpc("ops_patch", { p_col: c, p_id: id, p_patch: patch }); if (error) throw fail(error);
-        const h = hubs[c]; if (h && h.map.has(id)) local(c, id, Object.assign({}, h.map.get(id), patch));
-      },
-      async remove(c, id) { const { error } = await sb.from(T).delete().eq("col", c).eq("id", id); if (error) throw fail(error, "삭제"); local(c, id, null); },
-      async get(c, id) { const { data, error } = await sb.from(T).select("id,data").eq("col", c).eq("id", id).maybeSingle(); if (error) throw fail(error, "불러오기"); return data ? row(data) : null; },
-      async all(c) { return fetchAll(c); },
-      watch(c, fn, onErr) {
-        const h = hub(c); h.fns.add(fn); if (onErr) h.errs.add(onErr);
-        if (h.ready) setTimeout(() => fn(Array.from(h.map.values())), 0);
-        return () => { h.fns.delete(fn); if (onErr) h.errs.delete(onErr); };
-      },
-      watchWhere(c, field, value, fn, onErr) { return this.watch(c, list => fn(list.filter(x => x[field] === value)), onErr); }
-    };
-  }
-
   OPS.Store = {
     backend: null,
-    // 웹(Supabase 로그인)이면 Supabase, 아니면 공유 DB를 10초까지 기다리고, 안 되면 이 기기 저장으로 시작한다.
+    // 공유 DB를 10초까지 기다리고, 안 되면 이 기기 저장으로 시작한다.
     async init() {
-      if (G.OPS && G.OPS.SB && G.OPS.Auth) { this.backend = makeSupabaseBackend(G.OPS.SB); return this.backend.kind; }
       let db = null;
       try {
         const c = G.claude;

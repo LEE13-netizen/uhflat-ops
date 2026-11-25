@@ -1,0 +1,24 @@
+/* 웹 전용: 부서 PIN 로그인 화면. 아티팩트 index.html의 색 변수(--bg, --card …)를 그대로 쓴다. */
+body.locked>header,body.locked>.shell,body.locked>footer{display:none}
+.gate{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;background:var(--bg);overflow-y:auto}
+.gate[hidden]{display:none!important}
+.gbox{width:100%;max-width:420px;display:grid;gap:14px;justify-items:center;text-align:center}
+.glogo{font:700 44px/1 "Barlow Semi Condensed","Noto Sans KR",sans-serif;letter-spacing:.06em}
+.glogo small{display:block;margin-top:6px;font:600 15px "Noto Sans KR",sans-serif;letter-spacing:0;color:var(--muted)}
+.gmsg{font-size:16px;font-weight:600;color:var(--muted);min-height:1.5em}.gmsg.err{color:var(--hot)}
+.gdepts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:100%}
+.gdepts button{min-height:84px;border:1.5px solid var(--line);border-left:7px solid var(--dept,var(--muted));border-radius:14px;background:var(--card);color:var(--ink);cursor:pointer;display:grid;align-content:center;gap:2px;text-align:left;padding:10px 16px}
+.gdepts button b{font-size:20px}.gdepts button span{font:600 14px "Barlow Semi Condensed","Noto Sans KR",sans-serif;color:var(--muted);letter-spacing:.04em}
+.gdepts button[data-role=FO]{--dept:#00727A}.gdepts button[data-role=HK]{--dept:#7A4FB5}.gdepts button[data-role=FM]{--dept:#C46A12}.gdepts button[data-role=MG]{--dept:#4D5B69}
+.gdepts button.own{grid-column:1/-1;min-height:60px;--dept:var(--ink);border-style:dashed;border-left-style:solid}
+.gdepts button:hover{border-color:var(--ink)}
+.gback{border:0;background:none;color:var(--accent);font-weight:600;cursor:pointer;min-height:40px;font-size:15px}
+.gdept{font-size:24px;font-weight:700}.gdept span{font:600 16px "Barlow Semi Condensed",sans-serif;color:var(--muted);margin-left:4px}
+.gdots{display:flex;gap:16px;height:22px;align-items:center}
+.gdots i{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink)}.gdots i.on{background:var(--ink)}
+.gpad{display:grid;grid-template-columns:repeat(3,76px);gap:12px}
+.gpad button{height:76px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:600 30px "Barlow Semi Condensed",sans-serif;cursor:pointer}
+.gpad button.sm{font:600 15px "Noto Sans KR",sans-serif;border-style:dashed}
+.gpad button:active{background:var(--accent-bg)}
+.gfoot{font-size:13.5px;color:var(--muted);margin:6px 0 0}
+#loginWho{background:var(--accent-bg);color:var(--accent);font-weight:600}

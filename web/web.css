@@ -211,3 +211,34 @@ body .task.need{border:2px solid var(--hot);animation:opsNeed 1s ease-in-out inf
 .sp-msg{padding:10px 14px;border-radius:10px;background:var(--ok-bg);font-weight:600}.sp-msg.err{background:var(--hot-bg);color:var(--hot)}
 .sp-pin{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:14px 16px;border:3px solid var(--accent);border-radius:12px;background:var(--accent-bg);margin-bottom:14px}
 .sp-pin>b{font:700 34px "Barlow Semi Condensed",sans-serif;letter-spacing:.2em}
+
+/* [web] 1단계 구조: 작업대(처리하는 한 곳) · 보관함(쌓이는 곳) · 객실 이력 */
+.card.send{border-left:6px solid var(--accent)}
+.chips.sendt button{font-weight:600}
+.chips.hubf button b{margin-left:4px;padding:0 6px;border-radius:999px;background:var(--hot);color:#fff;font-size:12px}
+.sendhint{min-height:0;margin-top:6px;font-size:14px;color:var(--muted)}
+.sendhint:empty{display:none}
+.sendhint .btn{margin-left:6px}
+.hubd .srow{margin:0}
+.abar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-bottom:10px}
+.abar .chips{margin:0}
+.abar input[type=search]{height:40px;min-width:10em;flex:1;max-width:18em;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);padding:0 10px;font-size:16px}
+.alist{display:grid;gap:6px}
+.arow{display:grid;grid-template-columns:6.2em 6em minmax(0,1fr);grid-template-areas:"d r t" "d r m";gap:2px 10px;align-items:baseline;padding:9px 12px;border:1px solid var(--soft);border-left:5px solid var(--ok);border-radius:10px;background:var(--card);color:var(--ink)}
+.arow.open{border-left-color:var(--accent)}
+.arow[data-open]{cursor:pointer}.arow[data-open]:hover{border-color:var(--line)}
+.arow .ad{grid-area:d;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.arow .ar{grid-area:r;font:700 17px "Barlow Semi Condensed","Noto Sans KR",sans-serif;overflow-wrap:anywhere}
+.arow .at{grid-area:t;font-weight:600;overflow-wrap:anywhere}
+.arow .am{grid-area:m;font-size:13px;color:var(--muted)}
+.arow .chip{font-size:12px}
+@media(max-width:600px){.arow{grid-template-columns:auto minmax(0,1fr);grid-template-areas:"r d" "t t" "m m"}.arow .ad{text-align:right}}
+.acat{display:grid;gap:6px;margin-top:6px}
+.acat .hb{grid-template-columns:7.5em minmax(0,1fr) 2.5em;cursor:pointer}
+.acat .hb i{display:block;height:8px;border-radius:4px;background:var(--accent);min-width:4px}
+.acat .hb b{text-align:right;font-variant-numeric:tabular-nums}
+.acat .hb[aria-pressed=true]{border-color:var(--accent);background:var(--accent-bg)}
+.arep{border:1px solid var(--warn);color:var(--warn);background:var(--warn-bg);border-radius:999px;padding:5px 12px;cursor:pointer;font-size:14px}
+.arep b{margin-left:4px}
+.rhwarn{margin:4px 0 8px;padding:8px 12px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-weight:600;font-size:14.5px}
+.rhist .rhl{cursor:pointer}.rhist .rhl:hover{text-decoration:underline}

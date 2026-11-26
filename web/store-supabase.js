@@ -77,6 +77,13 @@
         const { error } = await sb.rpc("ops_patch", { p_col: c, p_id: id, p_patch: patch }); if (error) throw fail(error);
         const h = hubs[c]; if (h && h.map.has(id)) local(c, id, Object.assign({}, h.map.get(id), patch));
       },
+      // 바꾼 칸만 서버에서 합친다(동시 수정 손실 방지). 함수가 아직 없는 DB면 code PGRST202로 실패 → 호출한 쪽이 set으로 대신한다
+      async merge(c, id, patch) {
+        const { error } = await sb.rpc("ops_merge", { p_col: c, p_id: id, p_patch: patch, p_log_max: 20 }); if (error) throw fail(error);
+        const h = hubs[c], old = (h && h.map.get(id)) || {};
+        const p = Object.assign({}, patch); if (Array.isArray(p.log)) p.log = p.log.concat(old.log || []).slice(0, 20);
+        local(c, id, Object.assign({}, old, p));
+      },
       async remove(c, id) { const { error } = await sb.from(T).delete().eq("col", c).eq("id", id); if (error) throw fail(error, "삭제"); local(c, id, null); },
       async get(c, id) { const { data, error } = await sb.from(T).select("id,data").eq("col", c).eq("id", id).maybeSingle(); if (error) throw fail(error, "불러오기"); return data ? row(data) : null; },
       async all(c) { return fetchAll(c); },

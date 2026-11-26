@@ -145,12 +145,21 @@
 
   // ---- 쓰기 ----
   const clean = (v, n) => OPS.mask(String(v == null ? "" : v).trim()).slice(0, n);
+  // [web] 바꾼 칸만 저장한다(merge). 예전처럼 내 화면의 문서를 통째로 덮어쓰면, 다른 사람이 방금 바꾼 칸이 사라질 수 있다
+  //       (시뮬레이션: 하루 5~8건 "키핑 확인" 손실). 서버에 ops_merge가 아직 없으면 예전 방식(set)으로 저장한다.
   async function write(date, roomId, cur, patch, actor, act) {
     const now = Date.now();
-    const doc = Object.assign({}, cur || {}, patch, { date, roomId, propertyId: OPS.CTX.propertyId, updatedAt: now });
+    const meta = { date, roomId, propertyId: OPS.CTX.propertyId, updatedAt: now };
+    const entry = { at: now, by: actor.name || "", uid: actor.uid || "", role: actor.role, act };
+    const doc = Object.assign({}, cur || {}, patch, meta);
     delete doc.id;
-    doc.log = [{ at: now, by: actor.name || "", uid: actor.uid || "", role: actor.role, act }].concat((cur && cur.log) || []).slice(0, 12);
-    await S().set(OPS.COL.roomSvc, sid(date, roomId), doc);
+    doc.log = [entry].concat((cur && cur.log) || []).slice(0, 20);
+    const store = S(), key = sid(date, roomId);
+    if (store.merge) {
+      try { await store.merge(OPS.COL.roomSvc, key, Object.assign({}, patch, meta, { log: [entry] })); return doc; }
+      catch (e) { if (!/PGRST202|ops_merge|Could not find the function/i.test(String(e && (e.code || "") + " " + (e.message || "")))) throw e; }
+    }
+    await store.set(OPS.COL.roomSvc, key, doc);
     return doc;
   }
   const by = (actor, extra) => Object.assign({ at: Date.now(), by: actor.name || "", uid: actor.uid || "", role: actor.role }, extra || {});

@@ -19,7 +19,8 @@
       else if (t > s && t < e) stay = { m, d: t - s };
       else if (t === e) leave = true;
     });
-    if (stay) return { stay: "연박", clean: stay.d % 3 === 2 ? "전체재실" : "재실청소", flags: [], manual: true };
+    // [web] 전체 청소 주기는 설정값(기본 3일)을 따르고, 체크인 후 며칠째(day)를 넘겨 장기 투숙 점검(N일)에도 걸리게 한다
+    if (stay) { const cy = +(OPS.CTX && OPS.CTX.stayCycle) || 3; return { stay: "연박", clean: stay.d % cy === cy - 1 ? "전체재실" : "재실청소", flags: [], manual: true, day: stay.d }; }
     const bLeave = !!(base && LEAVE.has(base.stay)), bArrive = !!(base && (base.stay === "입실" || base.stay === "퇴실·입실"));
     const out = leave || bLeave, inn = !!arrive || bArrive;
     if (!arrive && !leave) return base;

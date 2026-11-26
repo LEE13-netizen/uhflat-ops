@@ -32,6 +32,12 @@
         if (!cur) throw new Error("기록을 찾지 못했습니다: " + id);
         load(c)[id] = Object.assign({}, cur, JSON.parse(JSON.stringify(patch))); persist(c); emit(c);
       },
+      // 바꾼 칸만 합치기(없으면 만들기). log는 새 기록을 앞에 덧붙인다 — 서버 함수 ops_merge와 같은 규칙
+      async merge(c, id, patch) {
+        const cur = load(c)[id] || {}, p = JSON.parse(JSON.stringify(patch));
+        if (Array.isArray(p.log)) p.log = p.log.concat(cur.log || []).slice(0, 20);
+        load(c)[id] = Object.assign({}, cur, p); persist(c); emit(c);
+      },
       async get(c, id) { const v = load(c)[id]; return v ? Object.assign({ id }, v) : null; },
       async remove(c, id) { delete load(c)[id]; persist(c); emit(c); },
       async all(c) { return list(c); },
@@ -101,6 +107,8 @@
     add(c, d) { return this.backend.add(c, d); },
     set(c, id, d) { return this.backend.set(c, id, d); },
     update(c, id, p) { return this.backend.update(c, id, p); },
+    // [web] 바꾼 칸만 합치기. 백엔드에 없으면(예전 아티팩트 DB) 이 칸이 없는 것처럼 undefined → svc.js가 set으로 저장
+    get merge() { const b = this.backend; return b && b.merge ? (c, id, p) => b.merge(c, id, p) : undefined; },
     get(c, id) { return this.backend.get(c, id); },
     remove(c, id) { return this.backend.remove(c, id); },
     all(c) { return this.backend.all(c); },

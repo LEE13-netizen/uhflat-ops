@@ -132,7 +132,12 @@
             seen.add(k);
             list.push(c.txt ? [st0, co, 1] : [st0, co]);   // 1 = 예약이 아니라 표기만 있는 칸(UHC·Miss 등)
           });
-          if (list.length) out[roomId(bm[src], no)] = list;
+          // [web] 표기 칸(UHC·Miss 등)은 이어진 날마다 기간이 하나씩 생겨 겹친다(실데이터: 한 객실 188건) → 겹치거나 맞닿은 것을 하나로 합친다
+          const res = list.filter(x => x.length === 2), mk = list.filter(x => x.length === 3).sort((a, c) => a[0].localeCompare(c[0]) || a[1].localeCompare(c[1]));
+          const merged = [];
+          mk.forEach(x => { const l = merged[merged.length - 1]; if (l && x[0] <= l[1]) { if (x[1] > l[1]) l[1] = x[1]; } else merged.push(x.slice()); });
+          const all = res.concat(merged).sort((a, c) => a[0].localeCompare(c[0]));
+          if (all.length) out[roomId(bm[src], no)] = all;
         });
       });
       return out;

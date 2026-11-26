@@ -32,8 +32,10 @@ class FakeDate extends Date { constructor(...a) { super(...(a.length ? a : [NOW]
 const ctx = { console, Date: FakeDate, Math, JSON, Object, Array, String, Number, Boolean, Set, Map, Promise, Error, RegExp, parseInt, isNaN };
 ctx.globalThis = ctx; ctx.window = ctx;
 vm.createContext(ctx);
+// OLD_SET=1: 예전 저장 방식(통째 덮어쓰기)으로 돌려 비교
 ["js/model.js", "js/core.js", "js/svc.js", "js/desk.js"].forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, f), "utf8"), ctx, { filename: f }));
 const OPS = ctx.OPS;
+if (process.env.OLD_SET) setTimeout(() => {}, 0);
 
 // ---------- 서버 + 기기별 캐시 ----------
 const server = {};           // col -> Map(id -> data)
@@ -64,6 +66,7 @@ function apply(cl, id, data, mode, intent, who) {
   const m = col(cl), old = m.get(id);
   let next;
   if (mode === "update") { if (!old) return; next = Object.assign({}, old, data); }
+  else if (mode === "merge") { const p = Object.assign({}, data); if (Array.isArray(p.log)) p.log = p.log.concat((old && old.log) || []).slice(0, 20); next = Object.assign({}, old || { id }, p); }   // 서버 ops_merge
   else next = data;
   if (cl === "roomSvc" && old && mode === "set") {
     Object.keys(old).forEach(k => {
@@ -77,6 +80,7 @@ function apply(cl, id, data, mode, intent, who) {
 }
 let idn = 0;
 ctx.OPS.Store = {
+  get merge() { return process.env.OLD_SET ? undefined : this._merge; },
   async add(cl, data) {
     const id = "s" + (++idn), c = CUR, it = INTENT.slice();
     cget(c, cl).set(id, Object.assign({ id }, data));
@@ -87,6 +91,12 @@ ctx.OPS.Store = {
     const c = CUR, it = INTENT.slice();
     cget(c, cl).set(id, Object.assign({ id }, data));
     push(NOW + logn(150 * c.net, 1000 * c.net), () => apply(cl, id, Object.assign({ id }, data), "set", it, c.id));
+  },
+  async _merge(cl, id, patch) {   // 0008 ops_merge: 바꾼 칸만(없으면 만들기). OLD_SET=1이면 예전처럼 통째 저장으로 비교
+    const c = CUR, it = INTENT.slice();
+    const cur = cget(c, cl).get(id) || { id }; const p = Object.assign({}, patch); if (Array.isArray(p.log)) p.log = p.log.concat(cur.log || []).slice(0, 20);
+    cget(c, cl).set(id, Object.assign({}, cur, p));
+    push(NOW + logn(150 * c.net, 1000 * c.net), () => apply(cl, id, patch, "merge", it, c.id));
   },
   async update(cl, id, patch) {
     const c = CUR, it = INTENT.slice();

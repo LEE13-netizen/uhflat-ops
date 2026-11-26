@@ -1,10 +1,10 @@
 /* 객실 청소 흐름(서초 청소표 분석 기반, 2026-11-25 사용자 확인 반영)
    재실(v0.19): 청소표의 재실 객실에 프론트가 "몇 시~몇 시 · 어떤 청소"만 적는다 → 키핑 확인 → 완료
-         시간이 적힌 것 = 그 시간대 정비 요청(서초 청소표 기준, 사용자 확정). 안 적으면 청소하지 않는다.
+         시간이 적힌 것 = 그 시간대 청소 요청(서초 청소표 기준, 사용자 확정). 안 적으면 청소하지 않는다.
          예전 기록(발송·무응답)은 읽기만 한다.
          청소 X여도 쓰레기·수건 같은 요청이 있으면 키핑 일로 남는다.
-   퇴실: 프론트 "퇴실완" → 키핑 확인 → 완료(사용 수건 수). 비밀번호를 제공한 객실은 퇴실완 때 "비번 변경" 업무가 생긴다.
-   "확인" = 키핑이 추가 내용(시간·요청·퇴실완)을 확인했다는 표시. 내용이 바뀌면 다시 확인 대상이 된다.
+   퇴실: 프론트 "퇴실 완료" → 키핑 확인 → 완료(사용 수건 수). 비밀번호를 제공한 객실은 퇴실 완료 때 "비번 변경" 업무가 생긴다.
+   "확인" = 키핑이 추가 내용(시간·요청·퇴실 완료)을 확인했다는 표시. 내용이 바뀌면 다시 확인 대상이 된다.
    저장: roomSvc 모음, 문서 id = 날짜__객실id (객실·날짜마다 한 문서라 동시 수정 충돌이 적다). */
 (function (G) {
   const OPS = G.OPS = G.OPS || {};
@@ -38,15 +38,15 @@
       if (s.done) return "입실 가능";
       if (s.cleaned) return "점검 대기";
       if (s.start) return "청소 중";
-      if (s.co) return "퇴실완·청소 대기";
-      if (foNeeds(row)) return "키핑: 아직 재실";
+      if (s.co) return "퇴실 완료·청소 대기";
+      if (foNeeds(row)) return "손님 아직 있음";
       if (s.late) return "레이트 " + s.late.time;
       return "퇴실 전";
     }
     return "";
   }
 
-  // 키핑이 "아직 재실"을 알렸는데 프론트가 아직 답(레이트·연장·퇴실완)을 안 한 퇴실 객실
+  // 키핑이 "손님 아직 있음"을 알렸는데 프론트가 아직 답(레이트·연장·퇴실 완료)을 안 한 퇴실 객실
   function foNeeds(row) {
     const s = row.s || {};
     if (row.type !== "out" || !s.stillIn || s.co || s.ext || s.done) return false;
@@ -71,7 +71,7 @@
     return !(s.foAck && s.foAck.at >= s.done.at);
   }
 
-  // [web] 키핑이 직접 퇴실을 확인한 객실(프론트 퇴실완 전에 손님이 나감) → 프론트가 읽었는가
+  // [web] 키핑이 직접 퇴실을 확인한 객실(프론트 퇴실 완료 전에 손님이 나감) → 프론트가 읽었는가
   function foCoNeedsAck(row) {
     const s = row.s || {};
     if (row.type !== "out" || !s.co || !s.co.role || s.co.role === "FO" || s.ext || s.done) return false;   // 프론트가 아닌 사람(키핑·관리자)이 퇴실을 기록
@@ -95,7 +95,7 @@
 
   const windowStart = w => { const m = /(\d{1,2})(?::(\d{2}))?/.exec(String(w || "")); return m ? +m[1] * 60 + (m[2] ? +m[2] : 0) : 24 * 60; };
 
-  // 키핑 작업 순서: 프론트가 입실 시각을 건 객실(시각 순) → 당일 입실 퇴실 객실 → 나머지 퇴실완(먼저 된 순) → 재실 시간 순 → 쓰레기·수건만
+  // 키핑 작업 순서: 프론트가 입실 시각을 건 객실(시각 순) → 당일 입실 퇴실 객실 → 나머지 퇴실 완료(먼저 된 순) → 재실 시간 순 → 쓰레기·수건만
   function hkSort(rows) {
     const rank = r => r.type === "out" ? (r.s.prio ? -1 : r.sameDayIn ? 0 : 1) : (r.s.reply && r.s.reply.type === "time" ? 2 : 3);
     const key = r => r.type === "out" ? (r.s.prio ? windowStart(r.s.prio.time) : r.s.co ? r.s.co.at : 0) : windowStart(r.s.reply && r.s.reply.window);
@@ -167,17 +167,17 @@
     replyNone: (date, id, cur, actor) => write(date, id, cur, { reply: by(actor, { type: "none", window: "", items: "" }), done: null }, actor, "무응답(청소 없음)"),
     clearReply: (date, id, cur, actor) => write(date, id, cur, { reply: null }, actor, "회신 지움"),
     checkout: async (date, id, cur, actor, room) => {
-      const doc = await write(date, id, cur, { co: by(actor) }, actor, "퇴실완");
+      const doc = await write(date, id, cur, { co: by(actor) }, actor, "퇴실 완료");
       // 비밀번호를 제공한 객실은 퇴실 때 비번 변경 업무를 만든다
-      // 퇴실완을 취소했다가 다시 눌러도 업무는 한 번만(문서에 업무 id를 남긴다)
+      // 퇴실 완료를 취소했다가 다시 눌러도 업무는 한 번만(문서에 업무 id를 남긴다)
       if (doc.pwGiven && !(cur && cur.co) && !doc.pwTask && OPS.Core) {
         const t = await OPS.Core.createTask({ kind: "pwchange", title: "비번 변경 (비밀번호 제공 객실 퇴실)", room: room.no, building: room.b, roomId: id, toDept: OPS.CTX.pwDept || "FM", priority: "주의" }, actor);
         return write(date, id, doc, { pwTask: t.id }, actor, "비번 변경 업무 등록");
       }
       return doc;
     },
-    undoCheckout: (date, id, cur, actor) => write(date, id, cur, { co: null }, actor, "퇴실완 취소"),
-    // [web] 키핑: 손님이 나간 것을 직접 확인(프론트 퇴실완 전). 퇴실완과 같게 기록하고(비번 변경 업무 포함), 키핑 확인·청소 시작까지
+    undoCheckout: (date, id, cur, actor) => write(date, id, cur, { co: null }, actor, "퇴실 완료 취소"),
+    // [web] 키핑: 손님이 나간 것을 직접 확인(프론트 퇴실 완료 전). 퇴실 완료와 같게 기록하고(비번 변경 업무 포함), 키핑 확인·청소 시작까지
     hkCheckout: async (date, id, cur, actor, room, startNow) => {
       const doc = await OPS.Svc.checkout(date, id, cur, actor, room);
       const p = actor.role === "HK" ? { hkAck: by(actor) } : {}; if (startNow) p.start = by(actor);   // 관리자가 누르면 키핑에는 "새로 온 것"으로 남긴다
@@ -185,8 +185,8 @@
       return write(date, id, doc, p, actor, startNow ? who + " 퇴실 확인·청소 시작" : who + " 퇴실 확인");
     },
     foCoAck: (date, id, cur, actor) => write(date, id, cur, { foCoAck: by(actor) }, actor, "프론트 확인(키핑 퇴실 확인)"),
-    // 키핑: 청소하러 갔는데 아직 손님이 있음 → 프론트가 레이트·연장·퇴실완으로 답한다
-    stillIn: (date, id, cur, actor) => write(date, id, cur, { stillIn: by(actor) }, actor, "키핑: 아직 재실"),
+    // 키핑: 청소하러 갔는데 아직 손님이 있음 → 프론트가 레이트·연장·퇴실 완료로 답한다
+    stillIn: (date, id, cur, actor) => write(date, id, cur, { stillIn: by(actor) }, actor, "손님 아직 있음"),
     late: (date, id, cur, actor, time) => {
       if (!/^\d{1,2}:\d{2}$/.test(time || "")) throw new Error("레이트 체크아웃 시각을 골라 주십시오.");
       return write(date, id, cur, { late: by(actor, { time }) }, actor, "레이트 " + time);

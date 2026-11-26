@@ -51,7 +51,8 @@
   // 역할별 허용: 처리 동작은 담당 부서, 확인·취소는 요청 부서, 관리자는 모두.
   function allowed(t, to, role) {
     if (!(OPS.FLOW[t.status] || []).includes(to)) return false;
-    if (OPS.isMgr(role)) return true;                       // 관리자·매니지먼트는 모든 업무
+    if (OPS.isMgr(role)) return true;                       // 관리자(SYSTEM OWNER)는 모든 업무
+    if (OPS.headOf && OPS.headOf(role) && (t.toDept === role || t.fromDept === role)) return true;   // [web] 부서장: 자기 부서 업무 전부
     const doer = role === t.toDept, asker = role === t.fromDept;
     if (t.status === "완료 대기") return asker;            // 완료 확인, 반려
     if (t.status === "완료") return asker;                  // 다시 열기

@@ -13,8 +13,8 @@
   document.documentElement.dataset.theme = "light";
   const FN = CFG.supabaseUrl + "/functions/v1/";
   const APP_SCRIPTS = window.OPS_APP_SCRIPTS || [];
-  // 앱 부서(v0.23): 프론트·키핑·시설·매니지먼트(MN) + 관리자(MG = 프로그램 관리자 전용)
-  const DEPTS = ["FO", "HK", "FM", "MN", "MG"];
+  // 앱 부서: 프론트·키핑·시설 + SYSTEM OWNER(MG = 프로그램 관리자 전용). 각 부서의 부서장 = 부서 관리자(dept_admin)
+  const DEPTS = ["FO", "HK", "FM", "MG"];   // [web] 매니지먼트(MN) 없앰. 전체 관리 = SYSTEM OWNER, 부서 관리 = 각 부서 부서장
   // 시험 환경은 화면 맨 위에 늘 경고 띠를 보인다(운영과 헷갈리지 않게)
   if (CFG.env !== "prod") {
     const strip = document.createElement("div");
@@ -46,15 +46,15 @@
       const owner = prof.role === "super_admin";
       let dept = prof.departments && DEPTS.includes(prof.departments.code) ? prof.departments.code : "FO";
       if (dept === "MG" && !owner) dept = "MN";              // 관리자(MG) 화면은 프로그램 관리자만
-      const head = !owner && prof.role === "dept_admin" && (dept === "FO" || dept === "MN");   // [web] 매니지먼트 합병: 프론트 부서장 = 프론트 + 부서장(전 부서) 보기
-      if (dept === "MN") dept = "FO";
-      OPS.Auth = { kind: "personal", uid: user.id, login_id: prof.login_id, name: prof.name, title: prof.title, role: prof.role, dept, deptName: prof.departments ? prof.departments.name : dept, owner, admin: owner || prof.role === "dept_admin", allowed: owner ? DEPTS.slice() : head ? ["FO", "MN"] : [dept], mustChangePin: prof.must_change_pin, lock };
+      if (!DEPTS.includes(dept)) dept = "FO";   // 예전 매니지먼트(MN) 계정은 프론트로
+      // [web] 부서장(dept_admin) = 자기 부서 직원·권한 관리. 다른 부서 화면은 SYSTEM OWNER만
+      OPS.Auth = { kind: "personal", uid: user.id, login_id: prof.login_id, name: prof.name, title: prof.title, role: prof.role, dept, deptName: prof.departments ? prof.departments.name : dept, owner, head: !owner && prof.role === "dept_admin", admin: owner || prof.role === "dept_admin", allowed: owner ? DEPTS.slice() : [dept], mustChangePin: prof.must_change_pin, lock };
       installUserApi(prof);
     } else {
       const m = user.app_metadata || {};
       if (!["FO", "HK", "FM", "MG"].includes(m.dept)) return false;   // 부서 계정도 개인 계정도 아님
       const owner = m.owner === true;
-      const dept = m.dept === "MG" ? (owner ? "MG" : "MN") : m.dept;    // 공용 '관리' 계정 = 매니지먼트
+      const dept = m.dept === "MG" ? (owner ? "MG" : "FO") : m.dept;    // [web] 공용 '관리' 계정은 매니지먼트가 없어져 프론트로
       const acc = CFG.accounts.find(a => a.email === user.email) || {};
       OPS.Auth = { kind: "legacy", uid: user.id, dept, owner, admin: false, legacyOwner: owner, label: acc.label || dept, allowed: owner ? DEPTS.slice() : [dept], lock };
     }

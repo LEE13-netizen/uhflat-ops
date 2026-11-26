@@ -324,3 +324,11 @@ ol.steps li.past:not(:last-child)::after{background:var(--ok)}
 .steps2{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
 .steps2 .lt{display:inline-flex;gap:6px;align-items:center}
 .steps2 .lt input{height:36px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:0 8px}
+/* [web] 목록 줄의 작은 단계 바 */
+ol.steps.mini{margin:6px 0 2px;gap:2px}
+ol.steps.mini li{font-size:11px}
+ol.steps.mini li i{width:18px;height:18px;font-size:10.5px;border-width:1.5px}
+ol.steps.mini li.now i{transform:none}
+ol.steps.mini li:not(:last-child)::after{top:9px;left:calc(50% + 11px);right:calc(-50% + 11px)}
+@media(max-width:600px){ol.steps.mini li span{font-size:10px;letter-spacing:-.3px}}
+ol.steps.mini{max-width:560px}

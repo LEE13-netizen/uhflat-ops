@@ -13,11 +13,11 @@
     { id: "FO", name: "프론트", en: "Front Office", code: "FO" },
     { id: "HK", name: "키핑", en: "Housekeeping", code: "HK" },
     { id: "FM", name: "시설", en: "Engineering", code: "ENG" },
-    { id: "MN", name: "부서장", en: "Manager", code: "MGR" },   // v0.23 매니지먼트 → [web] 프론트 부서장 권한으로 합침: 모든 부서 업무·통계, 설정은 제외
     { id: "MG", name: "SYSTEM OWNER", en: "System Owner", code: "OWN" }     // 프로그램 전체 관리자 = 소유자 전용
   ];
   OPS.isMgr = r => r === "MG" || r === "MN";
-  OPS.deptName = id => (OPS.DEPTS.find(d => d.id === id) || {}).name || id || "";
+  // [web] 매니지먼트(MN) 칸은 없앴다. 예전 기록의 MN은 이름만 읽는다. 전체 관리는 SYSTEM OWNER(MG), 부서 관리는 각 부서의 부서장
+  OPS.deptName = id => (OPS.DEPTS.find(d => d.id === id) || {}).name || (id === "MN" ? "매니지먼트(예전)" : id) || "";
 
   // 근무 파트: v0.21(2026-11-25)부터 화면에서 구분하지 않음. 예전 기록의 part 값을 읽을 때와 화면 자동 밝기(guessPart)에만 남겨 둠
   OPS.PARTS = [

@@ -5,14 +5,13 @@
    권한 검사는 서버 함수(staff-admin)가 한다. 이 화면은 결과만 보여 준다. */
 (function () {
   const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const ROLE = { super_admin: "SYSTEM OWNER", dept_admin: "부서 관리자", staff: "직원" };   // [web] 프론트 부서 관리자 = 부서장(전 부서 보기)
+  const ROLE = { super_admin: "SYSTEM OWNER", dept_admin: "부서장", staff: "직원" };   // [web] 부서장 = 자기 부서 직원·권한 관리
   const ACTION = { login: "로그인", login_locked: "로그인 잠금", pin_changed: "PIN 변경", pin_reset: "PIN 초기화", unlock: "잠금 해제", staff_create: "직원 추가", staff_update: "직원 정보 수정", staff_activate: "재활성화", staff_deactivate: "비활성화", staff_move_dept: "부서 이동", staff_delete: "직원 삭제", staff_set_role: "권한 변경", settings_update: "설정 변경", bootstrap_super_admin: "프로그램 관리자 계정 생성" };
   // 부서별 직급 목록(고르거나 직접 적을 수 있음)
   const TITLES = {
     FO: ["인턴", "프론트 사원", "주임", "대리", "프론트 매니저", "프론트 팀장"],
     HK: ["룸메이드", "하우스맨", "인스펙터", "주임", "하우스키핑 팀장"],
     FM: ["시설 기사", "주임", "시설 팀장"],
-    MN: ["매니저", "부지배인", "지배인", "총지배인"],
     MG: ["대표", "관리자"]
   };
   const titleLists = () => Object.keys(TITLES).map(c => `<datalist id="spT-${c}">${TITLES[c].map(t => `<option value="${esc(t)}">`).join("")}</datalist>`).join("");
@@ -67,7 +66,7 @@
             ${sup ? `<label>부서<select name="dept_code" id="spDept">${st.depts.filter(d => d.code !== "MN").map(d => `<option value="${esc(d.code)}">${esc(d.name)}</option>`).join("")}</select></label>` : `<label>부서<input value="${esc(deptName(st.data.me.dept_id))}" disabled></label>`}
             <label>이름<input name="name" required maxlength="20" placeholder="예: 홍길동"></label>
             <label>직급<input name="title" id="spTitle" required maxlength="30" list="spT-${esc(sup ? (st.depts[0] || {}).code || "FO" : deptCode(st.data.me.dept_id))}" placeholder="골라 주십시오"></label>
-            ${sup ? `<label>권한<select name="role"><option value="staff">직원</option><option value="dept_admin">부서 관리자</option></select></label>` : ""}
+            ${sup ? `<label>권한<select name="role"><option value="staff">직원</option><option value="dept_admin">부서장</option></select></label>` : ""}
             <label>아이디 <span class="sp-c">같은 이름이 있을 때만</span><input name="login_id" maxlength="20" placeholder="비우면 이름 (예: 홍길동2)"></label>
             <button class="btn main">추가</button></form>${titleLists()}</section>
           <section class="sp-card"><h3>직원 목록 <span class="sp-c">${st.data.staff.length}명</span></h3>
@@ -80,7 +79,7 @@
               `<button type="button" class="btn sm" data-sp="reset_pin" data-u="${s.user_id}">PIN 초기화</button>`,
               locked ? `<button type="button" class="btn sm" data-sp="unlock" data-u="${s.user_id}">잠금 해제</button>` : "",
               self ? "" : `<button type="button" class="btn sm" data-sp="set_active" data-u="${s.user_id}" data-v="${!s.active}">${s.active ? "비활성화" : "재활성화"}</button>`,
-              sup && !self ? `<button type="button" class="btn sm" data-sp="set_role" data-u="${s.user_id}" data-v="${s.role === "dept_admin" ? "staff" : "dept_admin"}">${s.role === "dept_admin" ? "부서 관리자 해제" : "부서 관리자 지정"}</button>` : "",
+              sup && !self ? `<button type="button" class="btn sm" data-sp="set_role" data-u="${s.user_id}" data-v="${s.role === "dept_admin" ? "staff" : "dept_admin"}">${s.role === "dept_admin" ? "부서장 해제" : "부서장 지정"}</button>` : "",
               self ? "" : `<button type="button" class="btn sm sp-del" data-sp="delete" data-u="${s.user_id}">삭제</button>`,
               sup && !self ? `<select class="sp-mv" data-sp="move_dept" data-u="${s.user_id}" aria-label="부서 이동">${st.depts.filter(d => d.code !== "MN" || d.id === s.dept_id).map(d => `<option value="${esc(d.code)}" ${d.id === s.dept_id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>` : ""
             ].join("");

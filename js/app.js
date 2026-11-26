@@ -10,6 +10,7 @@
 
   const TABS = [
     { id: "board", name: "현황판" },
+    { id: "inbox", name: "받은 편지함" },   // [web]
     { id: "svc", name: "청소·재실" },
     { id: "desk", name: "불출·분실물" },
     { id: "work", name: "할 일" },
@@ -144,13 +145,14 @@
     const ab = $("adminBtn"); if (ab) { ab.hidden = !adminOk(); ab.setAttribute("aria-pressed", String(st.role === "MG")); }
     // 탭 숫자: 키핑은 아직 출발 안 한 불출, 프론트는 키핑이 "못 함"으로 돌려보낸 오늘 요청
     const badge = id => {
+      if (id === "inbox") return inboxUnread();   // [web]
       if (id !== "desk") return 0;
       if (st.role === "HK") return st.deliv.filter(d => OPS.Desk.isOpen(d) && !d.go).length;
       if (st.role === "FO") return st.deliv.filter(d => d.fail && !d.cancel).length;
       return 0;
     };
     // 메뉴 버튼 숫자 = 지금 부서가 볼 것(확인 필요 + 탭 숫자)
-    const myN = st.tasks.filter(t => Core.needsAck(t, st.role)).length + (st.role === "HK" && st.master ? svcRows().filter(OPS.Svc.hkNeedsAck).length : 0) + (st.role === "FO" && st.master ? svcRows().filter(OPS.Svc.foNeedsAck).length : 0) + TABS.reduce((a, t) => a + badge(t.id), 0);
+    const myN = st.tasks.filter(t => Core.needsAck(t, st.role)).length + (st.role === "HK" && st.master ? svcRows().filter(OPS.Svc.hkNeedsAck).length : 0) + (st.role === "FO" && st.master ? svcRows().filter(OPS.Svc.foNeedsAck).length : 0) + TABS.filter(t => t.id !== "inbox").reduce((a, t) => a + badge(t.id), 0);
     const mb = $("menuBadge"); if (mb) { mb.hidden = !myN; mb.textContent = myN; }
     // 쓰는 메뉴와 아직 준비 중인 메뉴(교대·체크리스트)를 나눠 그린다
     const tabBtn = t => { const n = badge(t.id); return `<button type="button" role="tab" data-tab="${t.id}" aria-selected="${t.id === st.tab}">${esc(t.name)}${n ? `<span class="tbadge">${n}</span>` : ""}${t.later ? `<span class="later">${esc(t.later)}</span>` : ""}</button>`; };
@@ -581,15 +583,17 @@
       const id = OPS.Rooms.roomId(r.b, r.no), s = roomState(id, st.rdate), ts = by.get(id) || [];
       const hot = hotIds.has(id), need = needIds.has(id), x = svcBy.get(id), stage = x ? SV_SHORT[OPS.Svc.status(x)] : "";
       const dc = { FO: 0, HK: 0, FM: 0 }; ts.forEach(t => { if (dc[t.toDept] != null) dc[t.toDept]++; });
-      const late = x && x.s && x.s.late && !x.s.co ? x.s.late.time : "";
-      const stTxt = [s && s.stay ? (STAY_SHORT[s.stay] || s.stay) : "", late ? "레이트 " + late : stage].filter(Boolean).join(" · ");
-      const cls = ["rt", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", hot ? "hot" : "", need ? "need" : "", x && x.s && x.s.done && x.type === "out" ? "ready" : ""].join(" ");
+      // [web] 청소 단계는 아래 띠(색+기호+글자)로, 글자 줄은 숙박 상태와 재실 요청 시간만
+      const cs = x ? cleanStage(x) : null, win = x && x.type === "stay" && x.s && x.s.reply && x.s.reply.window && !x.s.done ? x.s.reply.window : "";
+      const stTxt = [s && s.stay ? (STAY_SHORT[s.stay] || s.stay) : "", win].filter(Boolean).join(" · ");
+      const cls = ["rt", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", hot ? "hot" : "", need ? "need" : "", x && x.s && x.s.done && x.type === "out" ? "ready" : "", cs ? "hasc" : ""].join(" ");
       const badges = ["FO", "HK", "FM"].filter(k => dc[k]).map(k => `<span class="dct dc-${k}" title="${esc((OPS.DEPTS.find(d => d.id === k) || {}).name || k)} 업무 ${dc[k]}건">${icon(k, 14)}${dc[k]}</span>`).join("")
         + (dBy.get(id) ? `<span class="dct dv">불출 ${dBy.get(id)}</span>` : "") + (hasNote(id) ? `<span class="dct nt">비고</span>` : "");
-      return `<button type="button" class="${cls}" data-room="${esc(id)}" aria-label="${esc(r.building)} ${esc(r.no)}호${stTxt ? ", " + esc(stTxt) : ""}${hot ? ", 긴급" : ""}${need ? ", 확인 필요" : ""}${ts.length ? ", 열린 업무 " + ts.length + "건" : ""}">
+      return `<button type="button" class="${cls}" data-room="${esc(id)}" aria-label="${esc(r.building)} ${esc(r.no)}호${stTxt ? ", " + esc(stTxt) : ""}${hot ? ", 긴급" : ""}${need ? ", 확인 필요" : ""}${ts.length ? ", 열린 업무 " + ts.length + "건" : ""}${cs ? ", 청소 " + esc(cs.t) : ""}">
         <span class="rtop"><span class="tn">${esc(r.no)}</span>${hot ? `<span class="tf hot">긴급</span>` : need ? `<span class="tf need">미확인</span>` : ""}</span>
         <span class="ts">${esc(stTxt)}</span>
         ${badges ? `<span class="tds">${badges}</span>` : ""}
+        ${csBand(cs)}
       </button>`;
     };
     const sections = blds.map(b => {
@@ -620,7 +624,7 @@
       ${demo ? `<p class="demo">예시 객실입니다. 관리자 역할의 설정 탭에서 객실을 등록하거나 예약표를 한 번 올리면 실제 객실로 바뀝니다.</p>` : ""}
       ${!demo ? dayNote() : ""}
       ${!demo ? liveLine() : ""}
-      <details class="lgd" ${st.lgOpen ? "open" : ""}><summary>표시 설명</summary><div class="legend2"><span><span class="tf hot">긴급</span> 긴급 업무</span><span><span class="tf need">미확인</span> ${esc(OPS.deptName(st.role))} 화면에서 아직 안 본 것</span><span><span class="dct dc-FO">${icon("FO", 14)}1</span><span class="dct dc-HK">${icon("HK", 14)}1</span><span class="dct dc-FM">${icon("FM", 14)}1</span> 부서별 열린 업무(프론트·키핑·시설)</span><span><span class="dct dv">불출 1</span> 진행 중 불출</span><span class="lgb lg-out">퇴실</span><span class="lgb lg-in">입실</span><span class="lgb lg-stay">연박</span><span class="lgb lg-free">공실</span><span class="lgb lg-ready">입실 가능</span></div></details>
+      <details class="lgd" ${st.lgOpen ? "open" : ""}><summary>표시 설명</summary><div class="legend2"><span><span class="tf hot">긴급</span> 긴급 업무</span><span><span class="tf need">미확인</span> ${esc(OPS.deptName(st.role))} 화면에서 아직 안 본 것</span><span><span class="dct dc-FO">${icon("FO", 14)}1</span><span class="dct dc-HK">${icon("HK", 14)}1</span><span class="dct dc-FM">${icon("FM", 14)}1</span> 부서별 열린 업무(프론트·키핑·시설)</span><span><span class="dct dv">불출 1</span> 진행 중 불출</span></div><div class="legend2 lgcs"><b>칸 아래 띠 = 청소 단계</b>${Object.keys(CS).map(k => `<span class="lgc cs-${k}"><b>${CS[k][0]}</b>${esc(CS[k][1])}</span>`).join("")}<span>숙박 상태(퇴실·입실·연박·공실)는 호수 아래 글자</span>${st.role === "HK" ? `<span>키핑: 칸을 우클릭(휴대폰은 길게 누르기)하면 청소 단계를 바로 바꿀 수 있습니다</span>` : ""}</div></details>
     </section>
     ${mode === "plan" ? planView(M, by, needIds, hotIds, q) : sections || `<div class="empty">해당하는 객실이 없습니다.</div>`}`;
   }
@@ -1124,6 +1128,248 @@
     } catch (e) { flash(e.message || String(e)); }
   }
 
+  // ---------- [web] 청소 단계: 현황판·배치도 띠(색만으로 구분하지 않게 기호와 글자를 함께) ----------
+  const CS = { pre: ["○", "퇴실 전"], wait: ["●", "청소 대기"], ing: ["◐", "청소 중"], chk: ["◎", "점검 대기"], ok: ["✓", "입실 가능"], x: ["✕", "청소 X"] };
+  function cleanStage(x) {
+    if (!x) return null;
+    const s = x.s || {};
+    if (x.type === "out") {
+      if (s.ext) return { k: "x", t: "연장·청소 X" };
+      if (s.done) return { k: "ok", t: "입실 가능" };
+      if (s.cleaned) return { k: "chk", t: "점검 대기" };
+      if (s.start) return { k: "ing", t: "청소 중" };
+      if (s.co) return { k: "wait", t: "청소 대기" };
+      if (OPS.Svc.foNeeds(x)) return { k: "pre", t: "아직 재실" };
+      return { k: "pre", t: s.late ? "레이트 " + s.late.time : "퇴실 전" };
+    }
+    if (s.done) return { k: "ok", t: "청소 완료" };
+    if (OPS.Svc.stayWork(s)) return { k: "wait", t: s.reply.type === "time" ? "청소 대기" : "요청만" };
+    return { k: "x", t: "청소 X" };
+  }
+  const csBand = c => c ? `<span class="cband cs-${c.k}" aria-hidden="true"><b>${CS[c.k][0]}</b>${esc(c.t)}</span>` : "";
+
+  // ---------- [web] 우클릭·길게 누르기로 청소 단계 바꾸기(키핑만) + 되돌리기 ----------
+  const STAGE_ACTS = { start: "청소 시작으로 바꿨습니다", cleaned: "점검 대기로 바꿨습니다", done: "입실 가능으로 바꿨습니다. 프론트에 바로 알림이 갑니다", undone: "완료를 취소했습니다" };
+  function stageMenu(x) {
+    const s = x.s || {}, it = [];
+    if (x.type === "out") {
+      if (s.ext) return { it, note: "연장 객실은 오늘 청소하지 않습니다." };
+      if (!s.co) return { it, note: "프론트가 퇴실완을 누르기 전입니다." };
+      if (s.done) it.push(["undone", "↺", "완료 취소"]);
+      else {
+        if (!s.start && !s.cleaned) it.push(["start", "◐", "청소 시작"]);
+        if (!s.cleaned) it.push(["cleaned", "◎", "청소 끝(점검 대기)"]);
+        it.push(["done", "✓", "점검 완료·입실 가능"]);
+      }
+    } else {
+      if (s.done) it.push(["undone", "↺", "완료 취소"]);
+      else if (OPS.Svc.hkTodo(x)) it.push(["done", "✓", "정비 완료"]);
+      else return { it, note: "프론트 정비 요청이 없는 객실입니다." };
+    }
+    return { it };
+  }
+  let cmEl = null, lpT = 0, lpXY = null, lpFired = false;
+  const closeCm = () => { if (cmEl) { cmEl.remove(); cmEl = null; } };
+  function openCm(id, px, py) {
+    closeCm();
+    const M = boardM(), r = M && M.rooms[id]; if (!r) return;
+    const x = svcRows().find(y => y.id === id), cs = cleanStage(x);
+    const m = x ? stageMenu(x) : { it: [], note: "오늘 청소 대상 객실이 아닙니다." };
+    cmEl = document.createElement("div"); cmEl.className = "cmenu"; cmEl.setAttribute("role", "menu"); cmEl.dataset.id = id;
+    cmEl.innerHTML = `<p class="cmh">${esc(rLabel(r))}호${cs ? ` · 지금 <span class="lgc cs-${cs.k}"><b>${CS[cs.k][0]}</b>${esc(cs.t)}</span>` : ""}</p>`
+      + m.it.map(([a, i, t]) => `<button type="button" role="menuitem" data-cm="${a}"><b aria-hidden="true">${i}</b>${esc(t)}</button>`).join("")
+      + (m.note ? `<p class="cmn">${esc(m.note)}</p>` : "") + `<button type="button" role="menuitem" data-cm="close" class="cmx">닫기</button>`;
+    document.body.appendChild(cmEl);
+    const w = cmEl.offsetWidth, h = cmEl.offsetHeight;
+    cmEl.style.left = Math.max(8, Math.min(px, innerWidth - w - 8)) + "px";
+    cmEl.style.top = Math.max(8, Math.min(py, innerHeight - h - 8)) + "px";
+    const f = cmEl.querySelector("[data-cm]"); if (f) f.focus({ preventScroll: true });
+  }
+  const cmTarget = el => {
+    if (st.role !== "HK" || boardM() === DEMO || !el || !el.closest) return null;
+    const t = el.closest("#view .rt[data-room], #view g.pr[data-room], #view .srow"); if (!t) return null;
+    if (t.dataset && t.dataset.room) return t.dataset.room;
+    const b = t.querySelector("[data-id]"); return b ? b.dataset.id : null;
+  };
+  document.addEventListener("contextmenu", e => {
+    const id = cmTarget(e.target); if (!id) return;
+    e.preventDefault(); clearTimeout(lpT);
+    if (cmEl && cmEl.dataset.id === id) return;
+    let px = e.clientX, py = e.clientY;
+    if (!px && !py) { const rc = e.target.closest("[data-room], .srow").getBoundingClientRect(); px = rc.left + 20; py = rc.top + 20; }   // 키보드(메뉴 키·Shift+F10)
+    if (lpXY) lpFired = true;
+    openCm(id, px, py);
+  });
+  // 아이폰은 길게 눌러도 contextmenu가 오지 않아 직접 잰다
+  document.addEventListener("touchstart", e => {
+    const id = cmTarget(e.target); lpFired = false; clearTimeout(lpT); lpXY = null;
+    if (!id || e.touches.length !== 1) return;
+    lpXY = [e.touches[0].clientX, e.touches[0].clientY];
+    lpT = setTimeout(() => { lpFired = true; if (!cmEl) { openCm(id, lpXY[0], lpXY[1]); try { navigator.vibrate && navigator.vibrate(15); } catch (err) {} } }, 550);
+  }, { passive: true });
+  document.addEventListener("touchmove", e => { if (lpXY && Math.hypot(e.touches[0].clientX - lpXY[0], e.touches[0].clientY - lpXY[1]) > 10) { clearTimeout(lpT); lpXY = null; } }, { passive: true });
+  document.addEventListener("touchend", e => { clearTimeout(lpT); lpXY = null; if (lpFired && e.cancelable) e.preventDefault(); }, { passive: false });
+  document.addEventListener("click", e => {
+    if (lpFired) { lpFired = false; if (!e.target.closest(".cmenu")) { e.preventDefault(); e.stopPropagation(); return; } }
+    const b = e.target.closest(".cmenu [data-cm]");
+    if (b) { e.preventDefault(); e.stopPropagation(); const id = cmEl.dataset.id, a = b.dataset.cm; closeCm(); if (a !== "close") stageAct(a, id); return; }
+    if (cmEl && !e.target.closest(".cmenu")) { closeCm(); e.preventDefault(); e.stopPropagation(); return; }
+    if (e.target.closest("#undoBtn")) { e.preventDefault(); e.stopPropagation(); undoStage(); }
+  }, true);
+  document.addEventListener("keydown", e => {
+    if (!cmEl) return;
+    if (e.key === "Escape") { closeCm(); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { const bs = [...cmEl.querySelectorAll("[data-cm]")], i = bs.indexOf(document.activeElement); const n = bs[(i + (e.key === "ArrowDown" ? 1 : bs.length - 1)) % bs.length]; if (n) { n.focus(); e.preventDefault(); } }
+  });
+  addEventListener("scroll", () => closeCm(), true);
+  addEventListener("resize", () => closeCm());
+
+  let undoT = 0;
+  async function stageAct(act, id) {
+    if (st.role !== "HK") { flash("청소 단계는 키핑만 바꿀 수 있습니다."); return; }
+    const before = st.svc[id] || null;
+    await svcAct(act, id);
+    const after = st.svc[id];
+    if (!after || after === before) return;   // 저장 실패는 svcAct가 알린다
+    st.undo = { id, before, act };
+    let n = 6;
+    let el = $("undoBar");
+    if (!el) { el = document.createElement("div"); el.id = "undoBar"; el.className = "undobar"; el.setAttribute("role", "status"); document.body.appendChild(el); }
+    const r = boardM().rooms[id];
+    const paint = () => { el.innerHTML = `<span><b>${esc(rLabel(r))}호</b> ${esc(STAGE_ACTS[act])}</span><button type="button" id="undoBtn">되돌리기 ${n}</button>`; };
+    paint(); el.hidden = false; clearInterval(undoT);
+    undoT = setInterval(() => { n--; if (n <= 0) { clearInterval(undoT); el.hidden = true; st.undo = null; } else paint(); }, 1000);
+  }
+  async function undoStage() {
+    const u = st.undo; if (!u) return;
+    st.undo = null; clearInterval(undoT); if ($("undoBar")) $("undoBar").hidden = true;
+    const cur = st.svc[u.id] || {}, a = actor(), now = Date.now(), sid = OPS.Svc.sid(st.rdate, u.id);
+    const doc = Object.assign({}, u.before || { date: st.rdate, roomId: u.id, propertyId: OPS.CTX.propertyId }); delete doc.id;
+    doc.updatedAt = now;
+    doc.log = [{ at: now, by: a.name || "", uid: a.uid || "", role: a.role, act: "되돌리기(" + (cur.log && cur.log[0] ? cur.log[0].act : u.act) + ")" }].concat(cur.log || []).slice(0, 12);
+    try { await Store.set(COL.roomSvc, sid, doc); st.svc[u.id] = Object.assign({ id: sid }, doc); render(); }
+    catch (e) { flash(e.message || String(e)); }
+  }
+
+  // ---------- [web] 받은 편지함: 우리 부서가 받은 것을 시간순으로 + 읽음/안 읽음 ----------
+  // 읽음 기록은 그대로 쓴다: 업무 = 부서 확인(ack), 퇴실완·재실 요청 = 키핑 확인(hkAck), 입실 가능 = 프론트 확인(foAck)
+  // 불출은 읽음 칸이 없어 hkSeen(키핑)·foSeen(프론트)을 더한다
+  function inboxItems(role) {
+    const R = role || st.role, out = [], M = boardM(), demo = !M || M === DEMO;
+    const nm = o => o ? (nameOf(o.uid, o.by && o.by !== "(이름 없음)" ? o.by : "") || "") : "";
+    st.tasks.forEach(t => {
+      const rep = t.status === "완료 대기" && t.fromDept === R && t.toDept !== R;
+      if (!rep && !(t.toDept === R && t.fromDept !== R)) return;
+      const ackAt = (t.ack && t.ack[R]) || 0, open = OPS.OPEN.has(t.status);
+      out.push({ key: "t:" + t.id, at: rep ? t.updatedAt : t.createdAt, kind: rep ? "완료 보고" : OPS.kindName(t.kind), hot: t.priority === "긴급" && open,
+        room: t.roomId || "", roomTxt: t.room ? (bTag(t) ? bTag(t) + " " : "") + t.room : "", text: t.title + (open ? "" : " (" + t.status + ")"),
+        from: rep ? OPS.deptName(t.toDept) : (nm({ uid: t.createdUid, by: t.createdBy }) || OPS.deptName(t.fromDept)) + " · " + OPS.deptName(t.fromDept),
+        read: !!ackAt || !open, readAt: ackAt, task: t, ack: open && !ackAt ? { task: t } : null, go: { task: t.id } });
+    });
+    if (!demo && (R === "HK" || R === "FO")) svcRows().forEach(x => {
+      const s = x.s || {}, lab = rLabel(x.r);
+      if (R === "HK") {
+        const hk = (s.hkAck && s.hkAck.at) || 0;
+        const push = (o, kind, text) => { if (!o || !o.at) return; const rd = !!s.done || hk >= o.at;
+          out.push({ key: "s:" + x.id + ":" + kind, at: o.at, kind, room: x.id, roomTxt: lab, text, from: (nm(o) || "프론트") + " · 프론트", read: rd, readAt: rd && hk >= o.at ? hk : 0, readBy: rd ? s.hkAck : null, ack: rd ? null : { svc: x.id, act: "ack" }, go: { room: x.id } }); };
+        if (x.type === "out" && !s.ext) {
+          push(s.co, "퇴실완", "퇴실완" + (x.sameDayIn ? " · 당일 입실" : "") + (s.pwGiven ? " · 비번 제공(변경 필요)" : ""));
+          push(s.prio, "우선 준비", (s.prio ? s.prio.time : "") + " 입실 · 먼저 준비");
+          push(s.late, "레이트", (s.late ? s.late.time : "") + " 레이트 체크아웃");
+          if (s.co && s.memo && s.memo.text) push(s.memo, "추가 요청", s.memo.text);
+        } else if (x.type === "stay" && OPS.Svc.stayWork(s)) push(s.reply, "재실 요청", (s.reply.window ? s.reply.window + " · " : "") + OPS.Svc.reqText(x));
+      } else {
+        if (x.type === "out" && s.done && !s.ext && s.done.at) {
+          const need = OPS.Svc.foNeedsAck(x), fa = s.foAck && s.foAck.at >= s.done.at ? s.foAck : null;
+          out.push({ key: "s:" + x.id + ":ready", at: s.done.at, kind: "입실 가능", room: x.id, roomTxt: lab, text: "점검 완료 · 입실 가능" + (x.sameDayIn ? " · 당일 입실 객실" : ""), from: (nm(s.done) || "키핑") + " · 키핑", read: !need, readAt: fa ? fa.at : 0, readBy: fa, ack: need ? { svc: x.id, act: "foack" } : null, go: { room: x.id } });
+        }
+        if (s.stillIn && s.stillIn.at) {
+          const need = OPS.Svc.foNeeds(x);
+          out.push({ key: "s:" + x.id + ":still", at: s.stillIn.at, kind: "아직 재실", room: x.id, roomTxt: lab, text: need ? "키핑 방문 때 손님이 있었습니다. 레이트·연장·퇴실완 중 하나로 답하십시오." : "키핑 방문 때 손님 있음(답함)", from: (nm(s.stillIn) || "키핑") + " · 키핑", read: !need, answer: need, go: { tab: "svc" } });
+        }
+      }
+    });
+    st.deliv.forEach(d => {
+      const where = ((d.building ? d.building + " " : "") + (d.no || "")).trim();
+      if (R === "HK" && !d.cancel) {
+        const rd = d.hkSeen || d.go || d.done || d.fail;
+        out.push({ key: "d:" + d.id, at: d.at, kind: "불출 요청", hot: !!d.urgent, room: d.roomId || "", roomTxt: where, text: OPS.Desk.line(d) + (d.due ? " · " + d.due + "까지" : ""), from: (nm(d) || "프론트") + " · " + OPS.deptName(d.role || "FO"), read: !!rd, readAt: rd ? rd.at : 0, readBy: rd || null, ack: rd ? null : { deliv: d, f: "hkSeen" }, go: { tab: "desk" } });
+      }
+      if (R === "FO" && d.fail) {
+        const rd = d.foSeen || d.cancel || d.reopened;
+        out.push({ key: "d:" + d.id + ":fail", at: d.fail.at, kind: "불출 못 함", hot: true, room: d.roomId || "", roomTxt: where, text: OPS.Desk.line(d) + (d.fail.why ? " · 이유: " + d.fail.why : ""), from: (nm(d.fail) || "키핑") + " · 키핑", read: !!rd, readAt: rd ? rd.at : 0, readBy: rd || null, ack: rd ? null : { deliv: d, f: "foSeen" }, go: { tab: "desk" } });
+      }
+    });
+    return out;
+  }
+  const inboxUnread = () => { const t0 = OPS.ymd(Date.now()); return inboxItems().filter(x => !x.read && OPS.ymd(x.at) === t0).length; };
+  async function inboxAck(x) {
+    const a = actor();
+    if (!x || !x.ack) return;
+    try {
+      if (x.ack.task) await Core.ack(x.ack.task, a);
+      else if (x.ack.svc) await svcAct(x.ack.act, x.ack.svc);
+      else if (x.ack.deliv) await Store.update(COL.deliveries, x.ack.deliv.id, { [x.ack.f]: { at: Date.now(), by: a.name || "", uid: a.uid || "", role: a.role } });
+    } catch (e) { flash(e.message || String(e)); }
+  }
+  function inboxView() {
+    const now = Date.now(), today = OPS.ymd(now), since = now - 7 * 864e5, q = String(st.ibQ || "").trim();
+    // 업무별로 기록을 미리 묶어 둔다(읽은 사람 찾기)
+    const evBy = new Map(); st.events.forEach(e => { if (e.at >= since - 864e5) { const l = evBy.get(e.taskId); if (l) l.push(e); else evBy.set(e.taskId, [e]); } });
+    const all = inboxItems();
+    let list = all.filter(x => st.ib7 ? x.at >= since : OPS.ymd(x.at) === today);
+    const unread = list.filter(x => !x.read).length;
+    if (st.ibUn) list = list.filter(x => !x.read);
+    if (q) list = list.filter(x => String(x.roomTxt || "").includes(q));
+    list.sort((a, b) => b.at - a.at);
+    const ackable = list.filter(x => !x.read && x.ack).length;
+    const who = x => {
+      if (x.readBy) return nameOf(x.readBy.uid, x.readBy.by) || "";
+      if (x.task && x.readAt) { const r = Core.readState(x.task, evBy.get(x.task.id) || []); if (r && r.dept === st.role && r.by) return nameOf(r.uid, r.by); }
+      return "";
+    };
+    const row = x => `<button type="button" class="ib ${x.read ? "" : "un"} ${x.hot ? "hot" : ""}" data-ib="${esc(x.key)}">
+        <span class="ibt">${esc(rdTime(x.at))}</span>
+        <span class="ibm"><span class="ibk">${esc(x.kind)}</span>${x.roomTxt ? `<b class="ibroom">${esc(x.roomTxt)}</b>` : ""}<span class="ibx">${esc(x.text)}</span><small>${esc(x.from)}</small></span>
+        <span class="ibr">${x.answer ? `<span class="unread">답 필요</span>` : !x.read ? `<span class="unread">안 읽음</span>` : x.readAt ? `<span class="rdy-r yes">읽음 ${esc(rdTime(x.readAt))}${who(x) ? " " + esc(who(x)) : ""}</span>` : `<span class="rdy-r yes">처리됨</span>`}</span>
+      </button>`;
+    const dn = OPS.deptName(st.role), lc = dn.charCodeAt(dn.length - 1) - 0xAC00, jb = lc >= 0 && lc < 11172 ? lc % 28 : 0;
+    return `<section class="card ibhead">
+        <div class="rbar" style="margin-bottom:6px"><h2 style="margin:0">${esc(dn)}${jb ? "이" : "가"} 받은 것</h2>${unread ? `<span class="unread">안 읽음 ${unread}</span>` : `<span class="rdy-r yes">모두 읽음</span>`}</div>
+        <p class="sub">다른 부서가 ${esc(dn)}${jb && jb !== 8 ? "으로" : "로"} 보낸 업무·청소 요청·입실 가능·불출을 시간순으로 모았습니다. 줄을 누르면 읽음으로 바뀌고 그 업무나 객실로 갑니다.</p>
+        <div class="rbar ibbar">
+          <button type="button" class="tg2" data-ibf="un" aria-pressed="${!!st.ibUn}">안 읽음만</button>
+          <div class="chips"><button type="button" data-ibf="today" aria-pressed="${!st.ib7}">오늘</button><button type="button" data-ibf="7" aria-pressed="${!!st.ib7}">최근 7일</button></div>
+          <input id="ibQ" type="search" inputmode="numeric" placeholder="호수로 거르기" value="${esc(st.ibQ || "")}" aria-label="호수로 거르기">
+          <button type="button" class="btn ${ackable ? "main" : ""}" data-ibf="all" ${ackable ? "" : "disabled"}>모두 읽음${ackable ? " (" + ackable + ")" : ""}</button>
+        </div>
+        ${st.rdate !== today ? `<p class="sub warnt">청소·재실 항목은 ${esc(st.rdate.slice(5).replace("-", "/"))} 기준입니다. 오늘 것을 보려면 현황판에서 오늘 날짜를 고르십시오.</p>` : ""}
+      </section>
+      <section class="card">${list.length ? `<div class="iblist">${list.map(row).join("")}</div>` : `<div class="empty">${st.ibUn ? "안 읽은 것이 없습니다." : "받은 것이 없습니다."}</div>`}</section>`;
+  }
+  document.addEventListener("click", e => {
+    const f = e.target.closest("[data-ibf]");
+    if (f) {
+      const k = f.dataset.ibf;
+      if (k === "un") st.ibUn = !st.ibUn; else if (k === "today") st.ib7 = false; else if (k === "7") st.ib7 = true;
+      else if (k === "all") {
+        const now = Date.now(), since = now - 7 * 864e5, t0 = OPS.ymd(now), q = String(st.ibQ || "").trim();
+        const list = inboxItems().filter(x => !x.read && x.ack && (st.ib7 ? x.at >= since : OPS.ymd(x.at) === t0) && (!q || String(x.roomTxt || "").includes(q)));
+        (async () => { for (const x of list) await inboxAck(x); render(); })();
+        return;
+      }
+      render(); return;
+    }
+    const b = e.target.closest("[data-ib]");
+    if (b) {
+      const x = inboxItems().find(y => y.key === b.dataset.ib); if (!x) return;
+      if (x.ack && !x.go.task) inboxAck(x);   // 업무는 열면 자동으로 읽음
+      if (x.go.task) { st.backRoom = null; openTask(x.go.task); }
+      else if (x.go.room) { st.backRoom = null; st.noteEdit = null; openRoom(x.go.room); }
+      else if (x.go.tab) { st.tab = x.go.tab; st.bf = ""; render(); toTop(); }
+    }
+  });
+
   // ---------- 배치도 ----------
   function planView(M, by, needIds, hotIds, q) {
     const needIn = (b, f) => Array.from(needIds).filter(id => { const r = M.rooms[id]; return r && r.b === b && (f == null || OPS.Layout.floorOf(r.no) === f); }).length;
@@ -1134,15 +1380,17 @@
     if (!st.pFloor[b] || !floors.includes(st.pFloor[b])) st.pFloor[b] = floors.slice().sort((x, y) => needIn(b, y) - needIn(b, x))[0];
     const f = st.pFloor[b];
     const L = OPS.Layout.get(M, b, f);
+    const svcBy = new Map(); svcRows().forEach(x => svcBy.set(x.id, x));   // [web] 청소 단계 띠
     const room = it => {
       const id = OPS.Rooms.roomId(b, it.no), s = roomState(id, st.rdate), ts = by.get(id) || [];
-      const cls = ["pr", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", ts.length ? "has" : "", needIds.has(id) ? "need" : "", hotIds.has(id) ? "hot" : "", q && it.no.startsWith(q) ? "hit" : "", it.stray ? "stray" : ""].join(" ");
+      const cs = svcBy.has(id) ? cleanStage(svcBy.get(id)) : null;
+      const cls = ["pr", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", ts.length ? "has" : "", needIds.has(id) ? "need" : "", hotIds.has(id) ? "hot" : "", q && it.no.startsWith(q) ? "hit" : "", it.stray ? "stray" : "", cs ? "cs-" + cs.k : ""].join(" ");
       const cx = it.x + it.w / 2;
-      return `<g class="${cls}" data-room="${esc(id)}" role="button" aria-label="${esc(it.no)}호${ts.length ? ", 열린 업무 " + ts.length + "건" : ""}${needIds.has(id) ? ", 확인 필요" : ""}">
+      return `<g class="${cls}" data-room="${esc(id)}" role="button" aria-label="${esc(it.no)}호${ts.length ? ", 열린 업무 " + ts.length + "건" : ""}${needIds.has(id) ? ", 확인 필요" : ""}${cs ? ", 청소 " + esc(cs.t) : ""}">
         <rect class="bg" x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" rx="6"/>
-        <rect class="bar" x="${it.x + 1}" y="${it.y + it.h - 6}" width="${it.w - 2}" height="5" rx="2"/>
-        <text class="no" x="${cx}" y="${it.y + it.h / 2 - 1}" text-anchor="middle">${esc(it.no)}</text>
-        <text class="sy" x="${cx}" y="${it.y + it.h / 2 + 13}" text-anchor="middle">${s && s.stay ? esc(STAY_SHORT[s.stay] || s.stay) : ""}</text>
+        <rect class="bar" x="${it.x + 1}" y="${it.y + it.h - (cs ? 10 : 6)}" width="${it.w - 2}" height="${cs ? 9 : 5}" rx="2"/>
+        <text class="no" x="${cx}" y="${it.y + it.h / 2 - 3}" text-anchor="middle">${esc(it.no)}</text>
+        <text class="sy" x="${cx}" y="${it.y + it.h / 2 + 11}" text-anchor="middle">${cs ? CS[cs.k][0] + " " : ""}${s && s.stay ? esc(STAY_SHORT[s.stay] || s.stay) : ""}</text>
         ${ts.length ? `<circle class="bd" cx="${it.x + it.w - 4}" cy="${it.y + 4}" r="9"/><text class="bdt" x="${it.x + it.w - 4}" y="${it.y + 8}" text-anchor="middle">${ts.length}</text>` : ""}
         ${hasNote(id) ? `<circle class="nd" cx="${it.x + 8}" cy="${it.y + 8}" r="3.5"/>` : ""}
       </g>`;
@@ -1512,13 +1760,13 @@
     a.style.display = hot.length ? "block" : "none";
     a.textContent = hot.length ? `긴급 ${hot.length}건: ` + hot.slice(0, 3).map(t => (t.room ? t.room + " " : "") + t.title).join(" / ") + (hot.length > 3 ? " 외" : "") : "";
     const keep = document.activeElement && document.activeElement.closest && document.activeElement.closest("#newForm") ? captureForm() : null;
-    const rqFocus = document.activeElement && (document.activeElement.id === "rq" || document.activeElement.id === "lSearch") ? document.activeElement.id : null;
+    const rqFocus = document.activeElement && (document.activeElement.id === "rq" || document.activeElement.id === "lSearch" || document.activeElement.id === "ibQ") ? document.activeElement.id : null;
     svcSubscribe();
     const keepD = keepInputs();
     // 현황판이 바탕화면. 다른 화면은 위에 "현황판" 돌아가기 줄을 붙인다
     const tabName = (TABS.find(t => t.id === st.tab) || {}).name || "";
     const back = st.tab === "board" ? "" : `<div class="backbar"><button type="button" class="home" data-tab="board"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>현황판</button><h1>${esc(tabName)}</h1></div>`;
-    $("view").innerHTML = dropMsgHtml() + back + (st.tab === "dash" ? dashView() : st.tab === "board" ? boardView() : st.tab === "svc" ? svcView() : st.tab === "desk" ? deskView() : st.tab === "work" ? workView() : st.tab === "log" ? logView() : st.tab === "rooms" ? roomsView() : st.tab === "settings" ? settingsView() : laterView(st.tab));
+    $("view").innerHTML = dropMsgHtml() + back + (st.tab === "dash" ? dashView() : st.tab === "board" ? boardView() : st.tab === "inbox" ? inboxView() : st.tab === "svc" ? svcView() : st.tab === "desk" ? deskView() : st.tab === "work" ? workView() : st.tab === "log" ? logView() : st.tab === "rooms" ? roomsView() : st.tab === "settings" ? settingsView() : laterView(st.tab));
     if (keep) restoreForm(keep);
     restoreInputs(keepD);
     if (rqFocus && $(rqFocus)) { const i = $(rqFocus); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
@@ -1647,7 +1895,7 @@
     const lf = e.target.closest("[data-lost]");
     if (lf) { const x = st.lost.find(y => y.id === lf.dataset.id); if (x) OPS.Desk.setLost(x, lf.dataset.lost, actor()).catch(err => flash(err.message)); return; }
     const sv = e.target.closest("[data-svc]");
-    if (sv && sv.tagName !== "INPUT") { svcAct(sv.dataset.svc, sv.dataset.id, sv); return; }
+    if (sv && sv.tagName !== "INPUT") { if (STAGE_ACTS[sv.dataset.svc] && st.role === "HK") stageAct(sv.dataset.svc, sv.dataset.id); else svcAct(sv.dataset.svc, sv.dataset.id, sv); return; }   // [web] 청소 단계는 되돌리기와 함께
     if (e.target.id === "goSvc") { st.openRoomId = null; $("dlg").close(); st.tab = "svc"; render(); return; }
     const bm = e.target.closest("[data-bmode]");
     if (bm) { st.bMode = bm.dataset.bmode; mem.set("bmode", st.bMode); render(); return; }
@@ -1753,7 +2001,7 @@
   placeMe(); addEventListener("resize", placeMe);
   document.addEventListener("toggle", e => { if (e.target.classList && e.target.classList.contains("lgd")) st.lgOpen = e.target.open; }, true);
   applyLang(); if (mem.get("lang", "ko") === "en") OPS.I18n.set("en");
-  document.addEventListener("input", e => { if (e.target.id === "rq") { st.rq = e.target.value; render(); } if (e.target.id === "lSearch") { st.lq = e.target.value; render(); } });
+  document.addEventListener("input", e => { if (e.target.id === "rq") { st.rq = e.target.value; render(); } if (e.target.id === "lSearch") { st.lq = e.target.value; render(); } if (e.target.id === "ibQ") { st.ibQ = e.target.value; render(); } });
   $("dlg").addEventListener("close", () => { st.openId = null; st.openRoomId = null; st.backRoom = null; st.noteEdit = null; });
   document.addEventListener("submit", async e => {
     e.preventDefault();

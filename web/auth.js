@@ -157,7 +157,32 @@
   }
 
   // ---------- 로그인 화면 ----------
-  const S = { mode: "personal", id: "", pin: "", busy: false, pick: null, msg: "", err: false };
+  // 첫 화면: 부서 4칸(+ 오른쪽 위 관리자) → 고른 부서의 로그인 화면(이름 + PIN). 공용 PIN은 병행 기간에만
+  const S = { mode: "pick", dept: null, id: "", pin: "", busy: false, pick: null, msg: "", err: false };
+  const GATE_DEPTS = [
+    { id: "FO", name: "프론트", en: "Front Office" },
+    { id: "HK", name: "키핑", en: "Housekeeping" },
+    { id: "FM", name: "시설", en: "Engineering" },
+    { id: "MN", name: "매니지먼트", en: "Management" }
+  ];
+  const ADMIN = { id: "MG", name: "관리자", en: "Administrator" };
+  const gDept = id => GATE_DEPTS.find(d => d.id === id) || (id === "MG" ? ADMIN : { id, name: id, en: "" });
+  // 부서 공용 계정(config.accounts): 매니지먼트 = 공용 '관리'(MG) 계정, 관리자 = 소유자 계정
+  const LEGACY_ACC = { FO: "FO", HK: "HK", FM: "FM", MN: "MG", MG: "OWNER" };
+  const GICON = {
+    FO: '<circle cx="9" cy="5" r="2.7"/><path d="M3.8 13.2c.3-3 2.4-4.9 5.2-4.9s4.9 1.9 5.2 4.9"/><path d="M15.8 13.2a2.7 2.7 0 0 1 5.4 0"/><path d="M18.5 9.4v1.1"/><path d="M1.8 13.2h20.4"/><path d="M3.3 13.2v7.8h17.4v-7.8"/>',
+    HK: '<path d="M15.5 2.5 11 12"/><path d="M6.5 12h8.5l2 9h-12.5z"/><path d="M8.5 15.5v5.5M11.5 15.5v5.5M14.5 15.5v5.5"/><path d="M19.5 3.5v4M17.5 5.5h4"/>',
+    FM: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    MG: '<path d="M12 21.5s8-3.8 8-10V5.2L12 2.5 4 5.2v6.3c0 6.2 8 10 8 10z"/><path d="m8.8 11.8 2.3 2.3 4.3-4.4"/>',
+    MN: '<rect x="5" y="4" width="14" height="17.5" rx="2"/><path d="M9 4V2.8h6V4"/><path d="m8.5 10 1.6 1.6 2.9-3"/><path d="M14.5 10.5h2"/><path d="m8.5 15.5 1.6 1.6 2.9-3"/><path d="M14.5 16h2"/>'
+  };
+  const gIcon = (id, size) => `<svg class="di" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GICON[id] || ""}</svg>`;
+  // 받침에 따라 을/를
+  const eul = w => { const c = (w || "").charCodeAt(w.length - 1); return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 ? w + "을" : w + "를"; };
+  const WD = ["일", "월", "화", "수", "목", "금", "토"];
+  const clockTxt = () => { const d = new Date(), p = n => String(n).padStart(2, "0"); return `${p(d.getHours())}:${p(d.getMinutes())} · ${d.getMonth() + 1}월 ${d.getDate()}일 (${WD[d.getDay()]})`; };
+  setInterval(() => { const c = $("gClock"); if (c) c.textContent = clockTxt(); }, 15000);
+  const canPin = () => S.mode === "personal" || (S.mode === "legacy" && !!S.pick);
   const PIN_LEN = () => (S.mode === "legacy" ? 4 : 6);
 
   function dots() { return `<div class="gdots" id="gDots" tabindex="0" role="textbox" aria-label="PIN ${S.pin.length}자리 입력됨">${Array.from({ length: PIN_LEN() }, (_, i) => `<i class="${i < S.pin.length ? "on" : ""}"></i>`).join("")}</div>`; }
@@ -165,24 +190,34 @@
   function msg(d) { return `<div class="gmsg ${S.err ? "err" : ""}" role="status">${esc(S.msg || d)}</div>`; }
   const logo = () => `<div class="glogo">UHC<small>OPERATION SYSTEM · HOTEL INTEGRATED MANAGEMENT</small></div>${CFG.env !== "prod" ? `<div class="genv">${esc(CFG.name)} 환경</div>` : ""}`;
 
+  function deptHead(id) {
+    const d = gDept(id);
+    return `<div class="gdh lk-${d.id}"><span class="ic">${gIcon(d.id, 30)}</span><b>${esc(d.name)}</b><small>${esc(d.en)}</small></div>`;
+  }
   function renderGate() {
     const g = $("gate");
+    const foot = `<p class="gfoot">공용 기기는 사용 후 <b>잠금</b>을 눌러 주십시오.</p>`;
+    if (S.mode === "pick") {
+      g.innerHTML = `<div class="gbar"><button type="button" class="lkadmin" data-gdept="MG">${gIcon("MG", 20)}<span>관리자</span></button></div>
+        <div class="gbox gwide">${logo()}<span class="gclock" id="gClock">${esc(clockTxt())}</span>
+        <p class="lkq">부서를 선택해 주십시오</p>${S.msg ? msg("") : ""}
+        <div class="lkd">${GATE_DEPTS.map(d => `<button type="button" data-gdept="${d.id}" class="lk-${d.id}"><span class="ic">${gIcon(d.id, 48)}</span><b>${esc(d.name)}</b><small>${esc(d.en)}</small></button>`).join("")}</div>
+        ${foot}</div>`;
+      return;
+    }
     let body;
     if (S.mode === "personal") {
-      body = `<form class="gform" id="gIdForm" autocomplete="off">
+      body = `<button type="button" class="gback" id="gBack">← 부서 다시 고르기</button>${deptHead(S.dept)}
+        <form class="gform" id="gIdForm" autocomplete="off">
           <label class="gid"><span>이름</span><input id="gId" value="${esc(S.id)}" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="예: 홍길동" aria-label="이름(아이디)"></label>
         </form>
         ${dots()}${msg("이름을 적고 PIN 6자리를 누르십시오")}${pad()}
-        ${CFG.legacyDeptLogin ? `<button type="button" class="gback" id="gLegacy">부서 공용 PIN으로 들어가기 (병행 기간)</button>` : ""}`;
-    } else if (!S.pick) {
-      body = `${msg("부서 공용 계정 — 근무 부서를 고르십시오")}
-        <div class="gdepts">${CFG.accounts.map(a => `<button type="button" data-acc="${a.id}" class="${a.id === "OWNER" ? "own" : ""}" data-role="${a.id}"><b>${esc(a.label)}</b><span>${esc(a.en)}</span></button>`).join("")}</div>
-        <button type="button" class="gback" id="gPersonal">← 개인 계정으로 로그인</button>`;
+        ${CFG.legacyDeptLogin && LEGACY_ACC[S.dept] ? `<button type="button" class="gback" id="gLegacy">${esc(S.dept === "MG" ? "소유자 공용 PIN으로 들어가기" : "부서 공용 PIN으로 들어가기")} (병행 기간)</button>` : ""}`;
     } else {
-      body = `<button type="button" class="gback" id="gBack">← 부서 다시 고르기</button>
-        <div class="gdept">${esc(S.pick.label)} <span>${esc(S.pick.en)}</span></div>${dots()}${msg("부서 PIN 4자리를 누르십시오")}${pad()}`;
+      body = `<button type="button" class="gback" id="gPersonal">← 개인 계정(이름 + PIN)으로</button>${deptHead(S.dept)}
+        ${dots()}${msg((S.dept === "MG" ? "소유자" : "부서") + " 공용 PIN 4자리를 누르십시오")}${pad()}`;
     }
-    g.innerHTML = `<div class="gbox">${logo()}${body}<p class="gfoot">공용 기기는 사용 후 <b>잠금</b>을 눌러 주십시오.</p></div>`;
+    g.innerHTML = `<div class="gbox">${logo()}${body}${foot}</div>`;
     // 이름이 비어 있으면 이름 칸, 아니면 PIN 칸(키보드 숫자 입력)에 커서
     const idEl = $("gId"), dEl = $("gDots");
     if (idEl && !S.id) idEl.focus(); else if (dEl && !S.busy) dEl.focus({ preventScroll: true });
@@ -199,7 +234,16 @@
       const { data, error } = await sb.auth.setSession({ access_token: r.data.access_token, refresh_token: r.data.refresh_token });
       if (error || !data.user) { S.msg = "세션을 시작하지 못했습니다"; S.err = true; renderGate(); return; }
       if (!(await setSession(data.user))) { await sb.auth.signOut(); S.msg = "사용할 수 없는 계정입니다"; S.err = true; renderGate(); return; }
-      if (OPS.Auth.mustChangePin) { showChangePin(true); return; }
+      // 고른 부서와 계정 소속이 다르면 들어가지 않는다(프로그램 관리자는 어느 부서로든 들어간다)
+      const A = OPS.Auth;
+      if (!A.owner && S.dept !== A.dept) {
+        await sb.auth.signOut(); OPS.Auth = null;
+        const own = gDept(A.dept).name;
+        S.msg = S.dept === "MG" ? "관리자 화면은 프로그램 관리자 계정만 들어갈 수 있습니다" : `${own} 소속 계정입니다. ${eul(own)} 눌러 다시 로그인해 주십시오`;
+        S.err = true; if (S.dept !== "MG") S.mode = "pick"; renderGate(); return;
+      }
+      if (A.owner) { try { localStorage.setItem("opsFrameUi:role", S.dept); } catch (e) {} }
+      if (A.mustChangePin) { showChangePin(true); return; }
       startApp();
     } else {
       S.busy = true; S.msg = "확인 중…"; S.err = false; renderGate();
@@ -269,13 +313,13 @@
       // 첫 로그인 강제 변경은 임시 PIN부터: step 0 으로 시작
       return;
     }
-    if (e.target.closest("#gLegacy")) { S.mode = "legacy"; S.pick = null; S.pin = ""; S.msg = ""; S.err = false; renderGate(); return; }
-    if (e.target.closest("#gPersonal")) { S.mode = "personal"; S.pin = ""; S.msg = ""; S.err = false; renderGate(); return; }
-    const a = e.target.closest("[data-acc]");
-    if (a) { S.pick = CFG.accounts.find(x => x.id === a.dataset.acc); S.pin = ""; S.msg = ""; renderGate(); return; }
-    if (e.target.closest("#gBack")) { S.pick = null; S.pin = ""; S.msg = ""; renderGate(); return; }
+    const gd = e.target.closest("[data-gdept]");
+    if (gd) { S.dept = gd.dataset.gdept; S.mode = "personal"; S.pick = null; S.pin = ""; S.msg = ""; S.err = false; renderGate(); return; }
+    if (e.target.closest("#gLegacy")) { S.mode = "legacy"; S.pick = CFG.accounts.find(x => x.id === LEGACY_ACC[S.dept]) || null; S.pin = ""; S.msg = ""; S.err = false; renderGate(); return; }
+    if (e.target.closest("#gPersonal")) { S.mode = "personal"; S.pick = null; S.pin = ""; S.msg = ""; S.err = false; renderGate(); return; }
+    if (e.target.closest("#gBack")) { S.mode = "pick"; S.pick = null; S.pin = ""; S.msg = ""; S.err = false; renderGate(); return; }
     const k = e.target.closest("[data-k]");
-    if (k && (S.mode === "personal" || S.pick)) {
+    if (k && canPin()) {
       if ($("gId")) S.id = $("gId").value;
       const v = k.dataset.k;
       if (v === "C") S.pin = ""; else if (v === "B") S.pin = S.pin.slice(0, -1); else if (S.pin.length < PIN_LEN()) S.pin += v;
@@ -291,7 +335,7 @@
       return;
     }
     if (isChange()) { if (/^\d$/.test(e.key)) changeKey(e.key); else if (e.key === "Backspace") changeKey("B"); return; }
-    if (!(S.mode === "personal" || S.pick)) return;
+    if (!canPin()) return;
     if (/^\d$/.test(e.key) && S.pin.length < PIN_LEN()) { if ($("gId")) S.id = $("gId").value; S.pin += e.key; renderGate(); if (S.pin.length === PIN_LEN()) tryLogin(); }
     else if (e.key === "Backspace") { S.pin = S.pin.slice(0, -1); renderGate(); }
   });

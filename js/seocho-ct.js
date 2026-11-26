@@ -625,6 +625,10 @@ annex: {}
 contactCols: {
 main: null,
 annex: null
+},
+assign: {
+main: {},
+annex: {}
 }
 };
 [ [ "청소표(본관)", "main" ], [ "청소표(신관)", "annex" ] ].forEach(([sn, b]) => {
@@ -702,6 +706,10 @@ sent: cs
 }
 const k = s((g(r, kc) || {}).v);
 if (k) out.kinds[b][room] = k;
+// [web] 담당(룸메이드 이름): 머리글 "담당" 열, 없으면 메모/비고 오른쪽 두 번째 칸(완료·담당·확인 순). 직원 이름만, 숫자·시간은 버린다
+const ac = col["담당"] !== undefined ? col["담당"] : memoC + 2;
+const who = s((g(r, ac) || {}).v).replace(/\s+/g, " ");
+if (who && /[가-힣A-Za-z]/.test(who) && !/^\d/.test(who) && who.length <= 20) out.assign[b][room] = who;
 const memo = s((g(r, memoC) || {}).v);
 const tm = memo.match(/\(\s*전체\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\)/);
 if (tm && out.date[b]) {

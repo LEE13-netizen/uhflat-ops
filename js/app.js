@@ -629,11 +629,12 @@
       for (const c of cl) {
         if (!c.date) { msgs.push(`${c.fileName}: 청소표 날짜를 찾지 못했습니다.`); continue; }
         const prev = st.days[c.date] || {};
-        const doc = Object.assign({}, prev, { date: c.date, cleanSheet: c.kinds, src: Object.assign({}, prev.src || {}, { clean: { file: c.fileName, at: now } }) });
+        const na = Object.keys(c.assign || {}).length;
+        const doc = Object.assign({}, prev, { date: c.date, cleanSheet: c.kinds, src: Object.assign({}, prev.src || {}, { clean: { file: c.fileName, at: now } }) }, na ? { assign: c.assign } : {});   // [web] 담당(청소표)
         delete doc.id;
         await Store.set(COL.roomDays, c.date, doc);
         st.days[c.date] = doc;
-        msgs.push(`청소표 ${c.fileName}: ${c.date} ${Object.keys(c.kinds).length}실 청소 유형`);
+        msgs.push(`청소표 ${c.fileName}: ${c.date} ${Object.keys(c.kinds).length}실 청소 유형${na ? ` · 담당 ${na}실(${new Set(Object.values(c.assign).flatMap(splitNames)).size}명)` : " · 담당 칸 비어 있음"}`);
         if (!st.days[st.rdate]) st.rdate = c.date;
       }
       if (M && (resv || cl.length)) { const save = Object.assign({}, M); delete save.id; await Store.set(COL.property, "main", save); st.master = M; }
@@ -800,7 +801,8 @@
     // 현황판 한 칸 = 객실 하나의 모든 부서 상황: 숙박 상태 · 청소 단계 · 부서별 열린 업무 · 불출 · 긴급/미확인
     const svcBy = new Map(); if (!demo) svcRows().forEach(x => svcBy.set(x.id, x));
     const dBy = new Map(); if (st.rdate === today) st.deliv.filter(OPS.Desk.isOpen).forEach(d => dBy.set(d.roomId, (dBy.get(d.roomId) || 0) + 1));
-    const prevIds = new Set(demo ? [] : prevOpen().filter(x => x.d.co).map(x => x.id));   // [web] 어제 퇴실 완료 후 입실 가능까지 못 간 객실(기록 없는 방은 표시 안 함)
+    const prevIds = new Set(demo ? [] : prevOpen().filter(x => x.d.co).map(x => x.id));
+    const meHK = st.role === "HK" ? myName() : "";   // [web] 키핑: 내 담당 방 테두리   // [web] 어제 퇴실 완료 후 입실 가능까지 못 간 객실(기록 없는 방은 표시 안 함)
     const tile = r => {
       const id = OPS.Rooms.roomId(r.b, r.no), s = roomState(id, st.rdate), ts = by.get(id) || [];
       const hot = hotIds.has(id), need = needIds.has(id), x = svcBy.get(id), stage = x ? SV_SHORT[OPS.Svc.status(x)] : "";
@@ -810,7 +812,7 @@
       const ckind = x && x.type === "stay" && !(x.s && x.s.done) ? kindName(x.kind) : "";   // [web] 재실 → 일반 청소 / 전체 청소
       const stTxt = [s && s.stay ? (STAY_SHORT[s.stay] || s.stay) : "", ckind, win].filter(Boolean).join(" · ");
       const nsr = nsOf(id);
-      const cls = ["rt", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", hot ? "hot" : "", need ? "need" : "", x && x.s && x.s.done && x.type === "out" ? "ready" : "", cs ? "hasc" : "", nsr ? "ns" : ""].join(" ");
+      const cls = ["rt", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", hot ? "hot" : "", meHK && isMine(id, meHK) ? "mine" : "", need ? "need" : "", x && x.s && x.s.done && x.type === "out" ? "ready" : "", cs ? "hasc" : "", nsr ? "ns" : ""].join(" ");
       const badges = ["FO", "HK", "FM"].filter(k => dc[k]).map(k => `<span class="dct dc-${k}" title="${esc((OPS.DEPTS.find(d => d.id === k) || {}).name || k)} 업무 ${dc[k]}건">${icon(k, 14)}${dc[k]}</span>`).join("")
         + (dBy.get(id) ? `<span class="dct dv">불출 ${dBy.get(id)}</span>` : "") + (hasNote(id) ? `<span class="dct nt">비고</span>` : "");
       return `<button type="button" class="${cls}" data-room="${esc(id)}" aria-label="${esc(r.building)} ${esc(r.no)}호${stTxt ? ", " + esc(stTxt) : ""}${hot ? ", 긴급" : ""}${need ? ", 확인 필요" : ""}${ts.length ? ", 열린 업무 " + ts.length + "건" : ""}${cs ? ", 청소 " + esc(cs.t) : ""}">
@@ -1113,6 +1115,7 @@
     const dates = weekChips();
     const d = dayDoc(st.rdate) || (manualOn(st.rdate) ? {} : null);
     let list = svcRows();
+    const listAllB = list;   // [web] 키핑 "내 방"은 동과 상관없이 내 담당 전부
     // [web] 본관·신관을 한 목록에 섞지 않는다. 기본은 본관(첫 동)
     if (multiB()) { if (!st.svcB || !M.buildings.some(b => b.id === st.svcB)) st.svcB = M.buildings[0].id; list = list.filter(x => x.r.b === st.svcB); }
     const sm = OPS.Svc.summary(list);
@@ -1133,7 +1136,12 @@
     </section>`;
     const tools = (st.role === "FO" || OPS.isMgr(st.role)) ? frontTools(M) : "";
     if (!d) return head + tools + `<div class="empty">${esc(st.rdate)} 객실 상태가 없습니다. 예약표를 반영하거나 예약을 직접 추가하면 재실·퇴실 목록이 생깁니다.</div>`;
-    if (st.role === "HK") return head + prevCard() + hkView(list);
+    if (st.role === "HK") {
+      const hv = hkView(list, listAllB), mineNow = !!myName() && mem.get("hkMine", "1") === "1";
+      // [web] "내 방"일 때 동 전체 숫자는 접어 둔다(내 목록이 첫 화면에 보이게)
+      const h = mineNow ? `<details class="hfold"><summary>동 전체 현황 보기 (날짜·본관/신관·숫자)</summary>${head}</details>` : head;
+      return hv.bar + h + prevCard() + hv.body;
+    }   // [web] 키핑은 "내 방" 줄을 맨 위에
     if (st.role === "FM") return head + `<section class="card"><p class="sub">시설 역할은 보기만 합니다. 청소 중 발견한 시설 이상은 키핑이 객실에서 업무로 등록합니다.</p>${foView(list, true)}</section>`;
     return head + prevCard() + foView(list, false) + tools;
   }
@@ -1355,7 +1363,7 @@
       const s = x.s, editing = st.svcEdit === x.id && !ro, r = s.reply || {}, rt = OPS.Svc.reqText(x);
       const sel = r.kinds || (s.reply ? [] : ["정비"]);
       return `<div class="srow ${OPS.Svc.hkNeedsAck(x) ? "pend" : ""}">
-        <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${kindChip(x.kind)}${forceChip(x)}${chip(x)}${r.window ? `<span class="chip k">${esc(r.window)}</span>` : ""}${rt ? `<span class="w" style="display:inline">${esc(rt)}</span>` : ""}</div>
+        <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${asgChip(x.id)}${kindChip(x.kind)}${forceChip(x)}${chip(x)}${r.window ? `<span class="chip k">${esc(r.window)}</span>` : ""}${rt ? `<span class="w" style="display:inline">${esc(rt)}</span>` : ""}</div>
         <div class="sa">${stageMenuBtn(x, ro)}${ro ? "" : `<button type="button" class="btn sm ${s.reply ? "" : "main"}" data-svc="edit" data-id="${esc(x.id)}">${s.reply ? "요청 수정" : "요청 입력"}</button>`}${s.reply ? `<span class="w">${esc(whoLine(s.reply, { short: true }))}</span>` : ""}${ackLine(x)}</div>
         ${editing ? `<div class="sedit req">
           <div class="acts" style="margin:0"><label class="tw">시작<input type="time" id="rf-${esc(x.id)}" value="${esc(r.from || "")}" step="1800"></label><span aria-hidden="true">~</span><label class="tw">끝<input type="time" id="rt-${esc(x.id)}" value="${esc(r.to || "")}" step="1800"></label></div>
@@ -1372,7 +1380,7 @@
       const stage = s.done ? "" : s.cleaned ? `청소 끝 ${tAt(s.cleaned)}` : s.start ? `청소 시작 ${tAt(s.start)}` : "";
       return `<div class="srow ${need || foA || foC ? "pend blinkrow" : OPS.Svc.hkNeedsAck(x) ? "pend" : ""}">
         ${hkCo && !s.done ? `<div class="sx">${esc(coDept)}에서 손님 퇴실을 확인했습니다(${esc(tAt(s.co))} · ${esc(nameOf(s.co.uid, s.co.by) || coDept)}). 프론트 퇴실 완료는 따로 누르지 않아도 됩니다.</div>` : ""}
-        <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${x.sameDayIn ? `<span class="chip in">당일 입실</span>` : ""}${fmChip(x.id)}${chip(x)}${s.prio ? `<span class="chip k">우선 ${esc(s.prio.time)}</span>` : ""}${s.late && s.co ? `<span class="chip k">레이트 ${esc(s.late.time)}</span>` : ""}${s.pwGiven ? `<span class="chip warn">비번 제공</span>` : ""}${stage ? `<span class="w" style="display:inline">${esc(stage)}</span>` : ""}</div>${miniSteps(x)}
+        <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${asgChip(x.id)}${x.sameDayIn ? `<span class="chip in">당일 입실</span>` : ""}${fmChip(x.id)}${chip(x)}${s.prio ? `<span class="chip k">우선 ${esc(s.prio.time)}</span>` : ""}${s.late && s.co ? `<span class="chip k">레이트 ${esc(s.late.time)}</span>` : ""}${s.pwGiven ? `<span class="chip warn">비번 제공</span>` : ""}${stage ? `<span class="w" style="display:inline">${esc(stage)}</span>` : ""}</div>${miniSteps(x)}
         ${need ? `<div class="sx warnt">키핑이 ${esc(tAt(s.stillIn))}에 방문했는데 아직 손님이 있습니다. 레이트·연장·퇴실 완료 중 하나로 답해 주십시오.</div>` : ""}
         <div class="sa">${stageMenuBtn(x, ro)}${foC ? `<button type="button" class="btn sm main" data-svc="foco" data-id="${esc(x.id)}">${esc(coDept)} 퇴실 확인 읽음</button>` : ""}${foA ? `<button type="button" class="btn sm main" data-svc="foack" data-id="${esc(x.id)}">입실 가능 확인</button>` : ""}${ro ? "" : `<label class="tg"><input type="checkbox" data-svc="pw" data-id="${esc(x.id)}" ${s.pwGiven ? "checked" : ""}> 비번 제공</label>
           ${s.co ? `<button type="button" class="btn sm" data-svc="unco" data-id="${esc(x.id)}" title="누르면 퇴실 완료 취소">${hkCo ? coDept + " 퇴실 확인" : "퇴실 완료"} ${esc(tAt(s.co))}</button>` : s.ext ? `<button type="button" class="btn sm" data-svc="unext" data-id="${esc(x.id)}">연장 취소</button>` : `<button type="button" class="btn sm main" data-svc="co" data-id="${esc(x.id)}">퇴실 완료</button>`}
@@ -1399,7 +1407,24 @@
         : `<div class="empty">퇴실 객실이 없습니다.</div>`}</section>`;
   }
 
-  function hkView(list) {
+  function hkView(list, allB) {
+    // [web] 내 방: 청소표 담당(또는 부서장이 바꾼 담당)이 나인 방만 — 본관·신관 모두에서
+    allB = allB || list;
+    const me = myName(), all = list, mineOn = !!me && mem.get("hkMine", "1") === "1";
+    const mineList = me ? allB.filter(x => isMine(x.id, me)) : [];
+    const myN = mineList.length, anyAsg = allB.some(x => asgOf(x.id)), noAsg = all.filter(x => !asgOf(x.id)).length;
+    if (mineOn) list = mineList;
+    const rowAsg = id => st.asgEdit && canAssign() ? asgSel(id) : mineOn ? "" : asgChip(id);
+    const personal = OPS.Auth && OPS.Auth.kind === "personal", names = asgNames();
+    const mineBar = `<section class="card minebar"><div class="mrow">
+        ${me ? `<span class="mme"><b>${esc(me)}</b>님 담당 <b>${myN}</b>실</span>${personal ? "" : `<button type="button" class="lnk" data-hkme="">이름 바꾸기</button>`}
+          <div class="chips mchips"><button type="button" data-hkmine="1" aria-pressed="${mineOn}">내 방 <b>${myN}</b></button><button type="button" data-hkmine="0" aria-pressed="${!mineOn}">전체${multiB() ? " " + esc((boardM().buildings.find(b => b.id === st.svcB) || {}).name || "") : ""} <b>${all.length}</b></button></div>`
+        : `<label class="f mpick">내 이름을 고르면 내 방만 봅니다<select id="hkMeSel"><option value="">이름 고르기</option>${names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("")}</select></label>`}
+        ${canAssign() ? `<button type="button" class="btn sm" data-asgedit="1" aria-pressed="${!!st.asgEdit}">${st.asgEdit ? "담당 바꾸기 끝" : "담당 바꾸기"}</button>` : ""}</div>
+      ${!anyAsg ? `<p class="sub">오늘 청소표에 담당이 없습니다. 청소표 담당 칸에 이름을 적어 올리거나${canAssign() ? " \"담당 바꾸기\"로 정하십시오." : " 부서장에게 요청하십시오."}</p>`
+        : me && !myN ? `<p class="sub warnt">${esc(me)} 이름으로 배정된 방이 없습니다. 청소표의 이름 표기를 확인하거나 "전체"를 보십시오.</p>`
+        : canAssign() && noAsg ? `<p class="sub">담당이 없는 방 ${noAsg}실</p>` : ""}
+      ${st.asgEdit ? `<p class="sub">방마다 담당을 고르면 바로 저장됩니다. "청소표대로"를 고르면 청소표 담당으로 돌아갑니다.</p>` : ""}</section>`;
     // v0.20: 단락(퇴실 청소·재실 청소) 안에서 할 것·퇴실 전·완료·요청 없음을 모두 보인다. 완료해도 사라지지 않는다.
     const n = [0, 1, 2, 3, 4, 5, 6, 8], byNo = (a, b) => (+a.r.no - +b.r.no);
     const row = x => {
@@ -1408,7 +1433,7 @@
       // [web] 새로 온 줄도 바로 "청소 시작"(시작하면 확인도 같이 남는다)
       const stageBtn = x.type !== "out" ? "" : !s.start ? `<button type="button" class="btn sm main" data-svc="start" data-id="${esc(x.id)}">청소 시작</button>` : !s.cleaned ? `<button type="button" class="btn sm main" data-svc="cleaned" data-id="${esc(x.id)}">청소 끝 → 점검 대기</button>` : "";
       return `<div class="srow ${need ? "pend blinkrow" : ""}">
-        <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${fmChip(x.id)}<span>${what}</span></div>${miniSteps(x)}
+        <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${rowAsg(x.id)}${fmChip(x.id)}<span>${what}</span></div>${miniSteps(x)}
         ${s.reply && s.reply.items && !s.reply.kinds ? `<div class="sx">요청: ${esc(s.reply.items)}</div>` : ""}${s.memo && s.memo.text ? `<div class="sx">추가: ${esc(s.memo.text)}</div>` : ""}
         <div class="sa">${need ? `<button type="button" class="btn sm main" data-svc="ack" data-id="${esc(x.id)}">확인</button>` : `<span class="w">확인 ${esc(tAt(s.hkAck))}</span>`}
           <label class="tw">작<select id="ts-${esc(x.id)}">${n.map(v => `<option>${v}</option>`).join("")}</select></label><label class="tw">큰<select id="tl-${esc(x.id)}">${n.map(v => `<option>${v}</option>`).join("")}</select></label>
@@ -1416,11 +1441,11 @@
       </div>`;
     };
     // 퇴실 완료 전: 방문했는데 손님이 있으면 프론트에 알린다(톡방의 "아직 퇴실 안 하셨다고 합니다")
-    const preRow = x => `<div class="srow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${chip(x)}${x.s.prio ? `<span class="chip k">${esc(x.s.prio.time)} 입실 우선</span>` : ""}</div>${miniSteps(x)}
+    const preRow = x => `<div class="srow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${rowAsg(x.id)}${chip(x)}${x.s.prio ? `<span class="chip k">${esc(x.s.prio.time)} 입실 우선</span>` : ""}</div>${miniSteps(x)}
       <div class="sa">${x.s.ext ? "" : `<button type="button" class="btn sm main" data-svc="hkcostart" data-id="${esc(x.id)}" title="손님이 나간 것을 확인했을 때만. 프론트에 알림이 갑니다">퇴실 확인·청소 시작</button>`}${x.s.stillIn && OPS.Svc.foNeeds(x) ? `<span class="w warnt">프론트 답 기다리는 중 (${esc(tAt(x.s.stillIn))} 알림)</span>` : `<button type="button" class="btn sm" data-svc="stillin" data-id="${esc(x.id)}">아직 손님 있음 → 프론트에 알림</button>`}</div></div>`;   // [web] 키핑 퇴실 확인
     const doneRow = x => { const r = x.s.reply; const what = x.type === "out" ? "퇴실" : r && r.window ? r.window + " · " + (r.kinds ? OPS.Svc.reqText(x) : x.kind) : x.kind;
-      return `<div class="srow donerow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${chip(x)}<span class="w" style="display:inline">${esc(what)}</span>${ackLine(x)}<button type="button" class="lnk" data-svc="undone" data-id="${esc(x.id)}">완료 취소</button></div></div>`; };
-    const offRow = x => `<div class="srow donerow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${chip(x)}${x.type === "stay" ? kindChip(x.kind) : ""}</div></div>`;
+      return `<div class="srow donerow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${rowAsg(x.id)}${chip(x)}<span class="w" style="display:inline">${esc(what)}</span>${ackLine(x)}<button type="button" class="lnk" data-svc="undone" data-id="${esc(x.id)}">완료 취소</button></div></div>`; };
+    const offRow = x => `<div class="srow donerow"><div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${rowAsg(x.id)}${chip(x)}${x.type === "stay" ? kindChip(x.kind) : ""}</div></div>`;
     const outs = list.filter(x => x.type === "out"), stays = list.filter(x => x.type === "stay");
     const oTodo = OPS.Svc.hkSort(outs.filter(OPS.Svc.hkTodo));
     const oPre = outs.filter(x => !x.s.co && !x.s.ext && !x.s.done).sort(byNo);
@@ -1430,12 +1455,12 @@
     const sDone = stays.filter(x => x.s.done).sort((a, b) => b.s.done.at - a.s.done.at);
     const sOff = stays.filter(x => !x.s.done && !OPS.Svc.hkTodo(x)).sort(byNo);
     const prog = (d, all) => `<span class="prog" aria-label="완료 ${d} / ${all}"><i style="width:${all ? Math.round(d / all * 100) : 0}%"></i></span><span class="c">완료 ${d} / ${all}</span>`;
-    return `<section class="card" id="sv-out"><h2>퇴실 청소 ${prog(oDone.length, outs.length)}</h2><p class="sub">당일 입실·우선 준비 객실이 맨 위입니다. 깜빡이는 줄은 새로 들어온 내용이니 확인을 눌러 주십시오. 완료한 객실도 아래에 남습니다.</p>
+    return { bar: mineBar, body: `<section class="card" id="sv-out"><h2>퇴실 청소 ${prog(oDone.length, outs.length)}</h2><p class="sub">당일 입실·우선 준비 객실이 맨 위입니다. 깜빡이는 줄은 새로 들어온 내용이니 확인을 눌러 주십시오. 완료한 객실도 아래에 남습니다.</p>
         ${outs.length ? secBlock("hk-o-todo", "할 청소", oTodo, row, { unread: OPS.Svc.hkNeedsAck, ackAct: "ack" }) + secBlock("hk-o-pre", "퇴실 전", oPre, preRow, { note: "손님이 나간 것을 확인했으면 \"퇴실 확인·청소 시작\"을 누르십시오. 프론트가 퇴실 완료를 눌러도 할 청소로 올라갑니다" }) + secBlock("hk-o-done", "완료", oDone, doneRow, { open: false }) + secBlock("hk-o-ext", "연장·청소 없음", oExt, offRow, { open: false }) : `<div class="empty">오늘 퇴실 객실이 없습니다.</div>`}
         ${outs.length && !oTodo.length && !oPre.length && oDone.length ? `<p class="okline">퇴실 청소를 모두 마쳤습니다.</p>` : ""}</section>
       <section class="card" id="sv-stay"><h2>재실 청소 ${prog(sDone.length, sTodo.length + sDone.length)}</h2><p class="sub">프론트가 적은 요청 시간순입니다. 요청이 없는 객실은 청소하지 않습니다.</p>
         ${stays.length ? secBlock("hk-s-todo", "할 재실 청소", sTodo, row, { unread: OPS.Svc.hkNeedsAck, ackAct: "ack" }) + secBlock("hk-s-done", "완료", sDone, doneRow, { open: false }) + secBlock("hk-s-off", "요청 없음·청소 X", sOff, offRow, { open: false, note: "청소하지 않는 재실 객실" }) : `<div class="empty">오늘 재실 객실이 없습니다.</div>`}
-        ${sTodo.length + sDone.length && !sTodo.length ? `<p class="okline">재실 청소 요청을 모두 마쳤습니다.</p>` : ""}</section>`;
+        ${sTodo.length + sDone.length && !sTodo.length ? `<p class="okline">재실 청소 요청을 모두 마쳤습니다.</p>` : ""}</section>` };
   }
 
   async function svcAct(act, id, el) {
@@ -1481,6 +1506,52 @@
     } catch (e) { flash(e.message || String(e)); }
   }
 
+  // ---------- [web] 담당(룸메이드): 청소표 담당 칸 + 부서장이 바꾼 것(앱이 우선) ----------
+  const splitNames = v => String(v || "").split(/[\/,·&+]|\s{2,}/).map(x => x.trim()).filter(Boolean);
+  const normName = v => String(v || "").replace(/\s+/g, "").toLowerCase();
+  const sameName = (a, b) => { const x = normName(a), y = normName(b); return !!x && !!y && (x === y || (Math.min(x.length, y.length) >= 2 && (x.includes(y) || y.includes(x)))); };
+  function asgOf(id, date) {
+    const d = date || st.rdate, sv = d === st.rdate ? st.svc[id] : null;
+    if (sv && sv.asg !== undefined && sv.asg !== null) return sv.asg.name || "";
+    const dd = dayDoc(d); return (dd && dd.assign && dd.assign[id]) || "";
+  }
+  const sheetAsg = id => { const dd = dayDoc(st.rdate); return (dd && dd.assign && dd.assign[id]) || ""; };
+  const isMine = (id, me) => !!me && splitNames(asgOf(id)).some(n => sameName(n, me));
+  function myName() { return OPS.Auth && OPS.Auth.kind === "personal" ? (OPS.Auth.name || "") : mem.get("hkMe", ""); }
+  function asgNames() {
+    const set = new Set, dd = dayDoc(st.rdate);
+    Object.values((dd && dd.assign) || {}).forEach(v => splitNames(v).forEach(n => set.add(n)));
+    Object.values(st.svc || {}).forEach(x => { if (x && x.asg && x.asg.name) splitNames(x.asg.name).forEach(n => set.add(n)); });
+    (st.staff || []).filter(x => x.active && x.dept === "HK").forEach(x => set.add(x.name));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }
+  const canAssign = () => !OPS.Auth || !!(OPS.Auth.owner || OPS.headOf("HK") || OPS.isMgr(st.role));
+  const asgChip = id => { const n = asgOf(id); return n ? `<span class="chip asg" title="담당">${esc(n)}</span>` : ""; };
+  function asgSel(id) {
+    const cur = asgOf(id), sh = sheetAsg(id), sv = st.svc[id], over = !!(sv && sv.asg !== undefined && sv.asg !== null);
+    const names = asgNames(); if (cur && !names.some(n => n === cur)) names.unshift(cur);
+    return `<select class="asgsel" data-asg="${esc(id)}" aria-label="${esc(rLabel(boardM().rooms[id]))} 담당">
+      <option value="__sheet" ${!over ? "selected" : ""}>청소표대로${sh ? ` (${esc(sh)})` : " (없음)"}</option>
+      <option value="" ${over && !cur ? "selected" : ""}>담당 없음</option>
+      ${names.map(n => `<option value="${esc(n)}" ${over && cur === n ? "selected" : ""}>${esc(n)}</option>`).join("")}
+      <option value="__new">직접 입력…</option></select>`;
+  }
+  async function asgSet(id, v) {
+    if (!canAssign()) { flash("담당은 키핑 부서장·관리자가 바꿉니다."); return; }
+    let name = v === "__sheet" ? null : v;
+    if (v === "__new") { name = (prompt("담당 이름") || "").trim().slice(0, 20); if (!name) { render(); return; } }
+    try { const doc = await OPS.Svc.setAsg(st.rdate, id, st.svc[id] || null, actor(), name); st.svc[id] = Object.assign({ id: OPS.Svc.sid(st.rdate, id) }, doc); render(); }
+    catch (e) { flash(e.message || String(e)); }
+  }
+  document.addEventListener("click", e => {
+    const m = e.target.closest("[data-hkmine]"); if (m) { mem.set("hkMine", m.dataset.hkmine); render(); return; }
+    if (e.target.closest("[data-hkme]")) { mem.set("hkMe", ""); render(); return; }
+    if (e.target.closest("[data-asgedit]")) { st.asgEdit = !st.asgEdit; render(); }
+  });
+  document.addEventListener("change", e => {
+    if (e.target.id === "hkMeSel") { mem.set("hkMe", e.target.value); mem.set("hkMine", "1"); render(); return; }
+    const a = e.target.closest && e.target.closest("select[data-asg]"); if (a) asgSet(a.dataset.asg, a.value);
+  });
   // [web] 누른 버튼 옆 입력칸 값(객실 상세와 목록에 같은 id가 동시에 있을 수 있어서 버튼 기준으로 찾는다)
   const nearInput = (el, fallbackId) => { const w = el && el.closest && el.closest(".lt, .sedit, .acts"); const i = w && w.querySelector("input[type=time]"); return i ? i.value : ($(fallbackId) || {}).value || ""; };
   // [web] 오늘 화면에서만 기록하는 동작 / 객실의 끝나지 않은 시설 업무
@@ -2095,7 +2166,7 @@
       else if (hk) side.push(btn("undone", "청소 완료 취소"));
     }
     const ci = steps.findIndex(z => z[0] === cur);
-    return `<div class="stepw"><div class="steph"><b>${esc(st.rdate.slice(5).replace("-", "/"))} ${x.type === "out" ? "퇴실 청소" : "재실 · " + esc(kindName(x.kind))}</b>${ackLine(x) ? `<span class="svcl">${ackLine(x)}</span>` : ""}</div>
+    return `<div class="stepw"><div class="steph"><b>${esc(st.rdate.slice(5).replace("-", "/"))} ${x.type === "out" ? "퇴실 청소" : "재실 · " + esc(kindName(x.kind))}</b><span class="sub" style="margin:0">담당 <b>${esc(asgOf(id) || "없음")}</b></span>${ackLine(x) ? `<span class="svcl">${ackLine(x)}</span>` : ""}</div>
       <ol class="steps">${steps.map(([k, t], i) => `<li class="${i < ci ? "past" : i === ci ? "now" : ""}"><i>${i < ci ? "✓" : i + 1}</i><span>${esc(t)}</span></li>`).join("")}</ol>
       ${next ? `<div class="stepn">${next}</div>` : ""}${note ? `<p class="sub stepnote">${esc(note)}</p>` : ""}${side.length ? `<div class="steps2">${side.join("")}</div>` : ""}
       ${next || side.length ? `<p class="sub" style="margin:6px 0 0">잘못 누르면 화면 아래 "되돌리기"를 6초 안에 누르십시오. 목록으로 한꺼번에 처리하려면 <button type="button" class="lnk" id="goSvc">청소·재실</button>.</p>` : `<p class="sub" style="margin:6px 0 0">청소 단계는 프론트·키핑이 바꿉니다.</p>`}</div>`;

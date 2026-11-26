@@ -149,7 +149,10 @@
       const date = learned.date.main || learned.date.annex || "";
       const out = {};
       ["main", "annex"].forEach(src => Object.entries(learned.kinds[src] || {}).forEach(([no, k]) => { out[roomId(bm[src], no)] = k; }));
-      return { date, kinds: out, master: learned.master };
+      // [web] 담당(룸메이드) — 청소표 담당 칸
+      const assign = {};
+      ["main", "annex"].forEach(src => Object.entries((learned.assign || {})[src] || {}).forEach(([no, n]) => { assign[roomId(bm[src], no)] = n; }));
+      return { date, kinds: out, assign, master: learned.master };
     },
 
     // 업무의 객실 표기를 객실 기준 정보에 맞춘다. 번호가 두 동에 다 있으면 동을 알아야 한다.

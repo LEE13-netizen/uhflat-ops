@@ -220,6 +220,8 @@
     start: (date, id, cur, actor) => write(date, id, cur, { start: by(actor), hkAck: by(actor) }, actor, "청소 시작"),   // [web] 시작 = 새 내용도 본 것
     cleaned: (date, id, cur, actor) => write(date, id, cur, { cleaned: by(actor) }, actor, "청소 끝·점검 대기"),
     setPwGiven: (date, id, cur, actor, on) => write(date, id, cur, { pwGiven: !!on }, actor, on ? "비번 제공 표시" : "비번 제공 해제"),
+    // [web] 담당 바꾸기(청소표 담당보다 우선). name "" = 담당 없음, null = 청소표 담당으로 되돌리기
+    setAsg: (date, id, cur, actor, name) => write(date, id, cur, { asg: name === null ? null : by(actor, { name: clean(name, 20) }) }, actor, name === null ? "담당 → 청소표대로" : name ? "담당 → " + clean(name, 20) : "담당 없음"),
     setMemo: (date, id, cur, actor, text) => write(date, id, cur, { memo: text ? by(actor, { text: clean(text, 300) }) : null }, actor, "추가 내용"),
     ack: (date, id, cur, actor) => write(date, id, cur, { hkAck: by(actor) }, actor, "키핑 확인"),
     foAck: (date, id, cur, actor) => write(date, id, cur, { foAck: by(actor) }, actor, "프론트 확인(입실 가능)"),

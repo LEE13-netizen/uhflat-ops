@@ -844,6 +844,7 @@
         <h2 style="margin:0">현황판</h2>
         <div class="seg2" role="group" aria-label="보기 방식"><button type="button" data-bmode="grid" aria-pressed="${mode === "grid"}">블록</button><button type="button" data-bmode="plan" aria-pressed="${mode === "plan"}">층 배치도</button><button type="button" data-bmode="stack" aria-pressed="${mode === "stack"}">건물 배치도</button></div>
       </div>
+      ${!demo ? catStrip(K) : ""}
       ${fset ? `<p class="bfline">「${esc(K.label[st.bf] || "")}」 객실 ${countIn(fset)}실만 보는 중 <button type="button" class="lnk" data-bf="${esc(st.bf)}">전체 보기</button></p>` : ""}
       <div class="rbar">
         <input id="rq" type="search" inputmode="numeric" placeholder="호수 검색" value="${esc(st.rq)}" aria-label="호수 검색">
@@ -887,10 +888,35 @@
       if (d.fail && !d.cancel) add("reply", d.roomId);
       if (OPS.Desk.isOpen(d) && !d.go) add("deliv", d.roomId);
     });
+    // [web] 분류별 보기: 숙박 상태 · 청소 단계 · 시설 하자 · 어제 미완료
+    ["c-out", "c-in", "c-stay", "c-free", "c-cleaning", "c-insp", "c-ready", "c-defect", "c-prev"].forEach(k => { sets[k] = new Set(); });
+    Object.keys(M.rooms).forEach(id => {
+      const s = hasDay ? roomState(id, st.rdate) : null, stay = s && s.stay;
+      if (stay === "퇴실" || stay === "퇴실·입실") add("c-out", id);
+      if (stay === "입실" || stay === "퇴실·입실") add("c-in", id);
+      if (stay === "연박") add("c-stay", id);
+      if (stay === "공실") add("c-free", id);
+      if (openFm(id).length) add("c-defect", id);
+    });
+    rows.forEach(x => {
+      const s = x.s || {};
+      if (s.done || s.ext) { if (x.type === "out" && s.done && !s.ext) add("c-ready", x.id); return; }
+      if (s.cleaned) add("c-insp", x.id); else if (s.start) add("c-cleaning", x.id);
+    });
+    prevOpen().filter(x => x.d.co).forEach(x => add("c-prev", x.id));
+    // [web] 미마감 알림용: 요청 시간이 지난 재실 · 오늘 입실 객실의 시설 하자 · 14시 넘어 아직 준비 안 된 당일 입실
+    ["o-staylate", "o-indefect", "o-arrnot"].forEach(k => { sets[k] = new Set(); });
+    const nowMin = new Date(now).getHours() * 60 + new Date(now).getMinutes(), isToday = st.rdate === OPS.ymd(now);
+    rows.forEach(x => {
+      const s = x.s || {};
+      if (isToday && x.type === "stay" && !s.done && OPS.Svc.stayWork(s) && s.reply && s.reply.window) { const end = OPS.Svc.windowStart((s.reply.window.split("~")[1] || "")); if (end < 24 * 60 && nowMin > end) add("o-staylate", x.id); }
+      if (isToday && x.type === "out" && x.sameDayIn && !s.done && !s.ext && nowMin >= 14 * 60) add("o-arrnot", x.id);
+    });
+    sets["c-in"].forEach(id => { if (sets["c-defect"].has(id)) add("o-indefect", id); });
     const rc = OPS.Dash.ready(rows.filter(x => inRb(x.id)));
     ["ready", "clean", "wait", "pre"].forEach(k => { sets["rd-" + k] = new Set(rc.ids[k]); });
     const dn = OPS.deptName(st.role);
-    const label = { need: dn + " 확인 필요", hot: "긴급", late: "기한 초과", mine: "우리 부서 업무", pre: "퇴실 전", ing: "청소 대기·중", ready: "입실 가능", reply: "프론트가 답할 것", todo: "할 청소", deliv: "불출 출발 전",
+    const label = { "o-staylate": "요청 시간이 지난 재실 청소", "o-indefect": "오늘 입실 객실인데 시설 하자", "o-arrnot": "당일 입실인데 아직 입실 가능 아님(14시 이후)", "c-out": "오늘 퇴실", "c-in": "입실 예정", "c-stay": "재실", "c-free": "공실", "c-cleaning": "청소 중", "c-insp": "점검 대기", "c-ready": "입실 가능", "c-defect": "시설 하자(열린 시설 업무)", "c-prev": "어제 미완료", need: dn + " 확인 필요", hot: "긴급", late: "기한 초과", mine: "우리 부서 업무", pre: "퇴실 전", ing: "청소 대기·중", ready: "입실 가능", reply: "프론트가 답할 것", todo: "할 청소", deliv: "불출 출발 전",
       "rd-ready": "당일 입실 · 입실 가능", "rd-clean": "당일 입실 · 청소 중·점검 대기", "rd-wait": "당일 입실 · 퇴실 완료, 청소 대기", "rd-pre": "당일 입실 · 아직 퇴실 전" };
     return { sets, label, hasDay, rows, rc, arr: OPS.Dash.arrivals(Object.keys(M.rooms).filter(inRb), id => roomState(id, st.rdate)), fresh: OPS.Dash.freshness(day, st.rdate, now) };
   }
@@ -904,6 +930,13 @@
   };
   const SVC_KEYS = new Set(["pre", "ing", "ready", "reply", "todo"]);
   const KPI_SHORT = { reply: "답할 것", need: "확인 필요", hot: "긴급", late: "기한 초과", mine: "우리 업무", pre: "퇴실 전", ing: "청소 대기·중", ready: "입실 가능", todo: "할 청소", deliv: "불출 대기" };
+  // [web] 분류 칩: 누르면 그 분류 객실만(같은 st.bf 거르기 사용)
+  const CATS = [["c-out", "퇴실"], ["c-in", "입실 예정"], ["c-stay", "재실"], ["c-free", "공실"], ["c-cleaning", "청소 중"], ["c-insp", "점검 대기"], ["c-ready", "입실 가능"], ["c-defect", "시설 하자", "hot"], ["c-prev", "어제 미완료", "warn"]];
+  function catStrip(K) {
+    if (!K) return "";
+    return `<div class="cats" role="group" aria-label="분류별 보기">${CATS.map(([k, n, tone]) => { const c = countIn(K.sets[k] || new Set());
+      return `<button type="button" class="cat ${c && tone ? "t-" + tone : ""}" data-bf="${k}" aria-pressed="${st.bf === k}" ${c || st.bf === k ? "" : "disabled"}>${esc(n)} <b>${c}</b></button>`; }).join("")}</div>`;
+  }
   function kpiStrip(K) {
     const list = KPI_BY_ROLE[st.role].filter(([k]) => K.hasDay || !SVC_KEYS.has(k));
     const tile = ([k, tone]) => {
@@ -1506,6 +1539,46 @@
     } catch (e) { flash(e.message || String(e)); }
   }
 
+  // ---------- [web] 미마감 알림: 부서마다 아직 끝나지 않은 일을 화면 위에 계속 띄운다 ----------
+  // 오늘 화면을 볼 때만 센다. 누르면 그 객실만 현황판에서(할 청소는 청소·재실로). 탭 제목에도 숫자, 30분마다 남아 있으면 한 번 알림
+  function boardSets() {
+    const M = boardM(); if (M === DEMO) return null;
+    const by = roomTasks(M), needIds = new Set(), hotIds = new Set();
+    by.forEach((ts, id) => { if (ts.some(t => Core.needsAck(t, st.role))) needIds.add(id); if (ts.some(t => t.priority === "긴급")) hotIds.add(id); });
+    if (st.role === "HK") svcRows().forEach(x => { if (OPS.Svc.hkNeedsAck(x)) needIds.add(x.id); });
+    if (st.role === "FO") svcRows().forEach(x => { if (foSvcNeed(x)) needIds.add(x.id); });
+    return kpiSets(M, by, needIds, hotIds);
+  }
+  function openItems() {
+    if (st.rdate !== OPS.ymd(Date.now())) return [];
+    const K = boardSets(); if (!K) return [];
+    const n = k => (K.sets[k] ? K.sets[k].size : 0), nowMin = new Date().getHours() * 60 + new Date().getMinutes(), r = st.role;
+    const it = (k, label, tone, tab) => ({ k, label, tone, n: n(k), tab: tab || "board" });
+    const fmOpen = st.tasks.filter(t => Core.isOpen(t) && t.toDept === "FM").length;
+    let L = [];
+    if (r === "FO") L = [it("reply", "답할 것", "hot"), it("o-indefect", "입실 예정 객실 하자", "hot"), it("c-prev", "어제 미완료", "hot"), it("o-arrnot", "입실 준비 안 됨", nowMin >= 15 * 60 ? "hot" : "warn"),
+      nowMin >= 11 * 60 ? it("pre", "퇴실 시간 지남", "hot") : null, it("need", "확인 필요", "acc"), it("c-defect", "시설 하자 객실", "warn")];
+    else if (r === "HK") {
+      const me = myName(), mineLeft = me ? svcRows().filter(x => isMine(x.id, me) && !(x.s && (x.s.done || x.s.ext)) && (x.type === "out" || OPS.Svc.hkTodo(x))).length : 0;
+      L = [me ? { k: "", label: "내 방 남음", tone: "acc", n: mineLeft, tab: "svc" } : null, it("c-prev", "어제 미완료", "hot"), it("o-staylate", "요청 시간 지난 재실", "hot"), it("o-arrnot", "입실 준비 안 됨", nowMin >= 15 * 60 ? "hot" : "warn"),
+        it("need", "새로 온 것", "acc"), it("todo", "할 청소", "acc", "svc"), it("c-insp", "점검 대기", "warn"), it("deliv", "불출 대기", "warn")];
+    } else if (r === "FM") L = [it("o-indefect", "오늘 입실 객실 하자", "hot"), it("hot", "긴급", "hot"), it("late", "기한 초과", "hot"), { k: "", label: "열린 시설 업무", tone: "acc", n: fmOpen, tab: "work" }, it("need", "확인 필요", "acc")];
+    else L = [it("c-prev", "어제 미완료", "hot"), it("o-indefect", "입실 예정 객실 하자", "hot"), it("o-arrnot", "입실 준비 안 됨", "warn"), it("o-staylate", "요청 시간 지난 재실", "warn"), nowMin >= 11 * 60 ? it("pre", "퇴실 시간 지남", "warn") : null, { k: "", label: "열린 시설 업무", tone: "acc", n: fmOpen, tab: "work" }];
+    return L.filter(x => x && x.n > 0);
+  }
+  let baseTitle = "";
+  function paintOpenBar() {
+    let bar = $("openbar");
+    if (!bar) { const a = $("alert"); if (!a || !a.parentNode) return; bar = document.createElement("div"); bar.id = "openbar"; bar.className = "openbar"; bar.setAttribute("role", "status"); a.parentNode.insertBefore(bar, a.nextSibling); }
+    const L = st.locked ? [] : openItems(), hot = L.filter(x => x.tone === "hot").reduce((a, x) => a + x.n, 0), tot = L.reduce((a, x) => a + x.n, 0);
+    bar.hidden = !L.length;
+    bar.className = "openbar" + (hot ? " hot" : "");
+    bar.innerHTML = L.length ? `<b class="obh">${esc(OPS.deptName(st.role))} 미마감</b>${L.map(x => `<button type="button" class="ob ${x.tone}" data-gotab="${x.tab}" ${x.k ? `data-bfset="${x.k}"` : ""}>${esc(x.label)} <b>${x.n}</b></button>`).join("")}` : "";
+    if (!baseTitle) baseTitle = document.title;
+    document.title = (tot ? `(${tot}) ` : "") + baseTitle;
+    st.openSummary = { hot, tot, text: L.slice(0, 3).map(x => x.label + " " + x.n).join(" · ") };
+  }
+  setInterval(() => { const o = st.openSummary; if (o && o.hot && !st.locked && !document.hidden) flash(`${OPS.deptName(st.role)} 미마감 ${o.tot}건 — ${o.text}`); }, 30 * 60000);
   // ---------- [web] 담당(룸메이드): 청소표 담당 칸 + 부서장이 바꾼 것(앱이 우선) ----------
   const splitNames = v => String(v || "").split(/[\/,·&+]|\s{2,}/).map(x => x.trim()).filter(Boolean);
   const normName = v => String(v || "").replace(/\s+/g, "").toLowerCase();
@@ -2392,6 +2465,7 @@
     const a = $("alert");
     a.style.display = hot.length ? "block" : "none";
     a.textContent = hot.length ? `긴급 ${hot.length}건: ` + hot.slice(0, 3).map(t => (t.room ? t.room + " " : "") + t.title).join(" / ") + (hot.length > 3 ? " 외" : "") : "";
+    try { paintOpenBar(); } catch (e) {}   // [web] 미마감 알림
     const keep = document.activeElement && document.activeElement.closest && document.activeElement.closest("#newForm") ? captureForm() : null;
     const rqFocus = document.activeElement && (document.activeElement.id === "rq" || document.activeElement.id === "lSearch" || document.activeElement.id === "ibQ" || document.activeElement.id === "aq") ? document.activeElement.id : null;
     svcSubscribe();

@@ -409,3 +409,24 @@ ol.steps.mini{max-width:560px}
 details.hfold{margin:0 0 12px}
 details.hfold>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-weight:600;color:var(--muted)}
 details.hfold[open]>summary{margin-bottom:8px}
+/* [web] 현황판 분류 칩 */
+.cats{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+.cat{min-height:38px;padding:3px 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font-size:14px;font-weight:600;cursor:pointer}
+.cat b{font:700 16px "Barlow Semi Condensed","Noto Sans KR",sans-serif;margin-left:2px}
+.cat[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.cat.t-hot:not([aria-pressed=true]){border-color:var(--hot);color:var(--hot);background:var(--hot-bg)}
+.cat.t-warn:not([aria-pressed=true]){border-color:var(--warn);color:var(--warn);background:var(--warn-bg)}
+.cat:disabled{opacity:.4;cursor:default}
+/* [web] 미마감 알림 줄(모든 화면 위) */
+.openbar{position:sticky;top:0;z-index:30;display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:var(--card);border:1.5px solid var(--warn);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.openbar.hot{border-color:var(--hot)}
+.openbar .obh{font-size:14px;margin-right:4px}
+.openbar.hot .obh{color:var(--hot)}
+.openbar[hidden]{display:none}
+.ob{min-height:36px;padding:2px 11px;border-radius:999px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font-size:13.5px;font-weight:600;cursor:pointer}
+.ob b{font:700 15px "Barlow Semi Condensed","Noto Sans KR",sans-serif}
+.ob.hot{border-color:var(--hot);background:var(--hot-bg);color:var(--hot)}
+.ob.warn{border-color:var(--warn);background:var(--warn-bg);color:var(--warn)}
+.ob.acc{border-color:var(--accent);color:var(--accent)}
+@media(prefers-reduced-motion:no-preference){.openbar.hot .obh{animation:opsObPulse 2.4s ease-in-out infinite}}
+@keyframes opsObPulse{50%{opacity:.55}}

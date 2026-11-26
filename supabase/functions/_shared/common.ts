@@ -51,6 +51,10 @@ export async function derivePassword(admin: SupabaseClient, userId: string, pin:
   return btoa(String.fromCharCode(...new Uint8Array(sig)));
 }
 
+// 로그인 아이디: 보통 직원 이름(한글). 공백은 빼고, 영문은 소문자로 맞춘다. 같은 이름이 있으면 '홍길동2'처럼 구분
+export const ID_RE = /^[가-힣a-z0-9._-]{2,20}$/;
+export const normId = (v: unknown) => String(v ?? "").normalize("NFC").replace(/\s+/g, "").toLowerCase();
+
 export const PIN_RE = /^\d{6}$/;
 // 금지 PIN: 같은 숫자 6개, 오름·내림 연속
 export function pinProblem(pin: string): string | null {

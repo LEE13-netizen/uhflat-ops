@@ -7,6 +7,15 @@
   const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ROLE = { super_admin: "프로그램 관리자", dept_admin: "부서 관리자", staff: "직원" };
   const ACTION = { login: "로그인", login_locked: "로그인 잠금", pin_changed: "PIN 변경", pin_reset: "PIN 초기화", unlock: "잠금 해제", staff_create: "직원 추가", staff_update: "직원 정보 수정", staff_activate: "재활성화", staff_deactivate: "비활성화", staff_move_dept: "부서 이동", staff_set_role: "권한 변경", settings_update: "설정 변경", bootstrap_super_admin: "프로그램 관리자 계정 생성" };
+  // 부서별 직급 목록(고르거나 직접 적을 수 있음)
+  const TITLES = {
+    FO: ["인턴", "프론트 사원", "주임", "대리", "프론트 매니저", "프론트 팀장"],
+    HK: ["룸메이드", "하우스맨", "인스펙터", "주임", "하우스키핑 팀장"],
+    FM: ["시설 기사", "주임", "시설 팀장"],
+    MN: ["매니저", "부지배인", "지배인", "총지배인"],
+    MG: ["대표", "관리자"]
+  };
+  const titleLists = () => Object.keys(TITLES).map(c => `<datalist id="spT-${c}">${TITLES[c].map(t => `<option value="${esc(t)}">`).join("")}</datalist>`).join("");
   const st = { open: false, data: null, depts: [], logs: null, msg: "", err: false, shown: null, tab: "staff" };
   const fmt = t => { if (!t) return ""; const d = new Date(t); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
   const A = () => window.OPS.Auth;
@@ -28,6 +37,7 @@
     st.logs = data || [];
   }
   const deptName = id => (st.depts.find(d => d.id === id) || {}).name || "";
+  const deptCode = id => (st.depts.find(d => d.id === id) || {}).code || "";
   const nameOf = id => { const s = st.data && st.data.staff.find(x => x.user_id === id); return s ? s.name : (id ? id.slice(0, 8) : "시스템"); };
 
   function status(s) {
@@ -46,20 +56,20 @@
     if (me.kind === "legacy" && me.legacyOwner) {
       body = `<section class="sp-card"><h3>개인 프로그램 관리자 계정 만들기</h3>
         <p class="sp-g">처음 한 번만 합니다. 만든 뒤에는 이 계정(부서 공용)이 아니라 <b>개인 아이디</b>로 로그인해 직원을 등록합니다. 임시 PIN은 한 번만 보이니 바로 적어 두십시오.</p>
-        <form id="spBoot" class="sp-form"><label>아이디<input name="login_id" required maxlength="20" placeholder="영문 소문자·숫자 3~20자"></label><label>이름<input name="name" required maxlength="40"></label><label>직급<input name="title" maxlength="30"></label><button class="btn main">만들기</button></form></section>`;
+        <form id="spBoot" class="sp-form"><label>이름 <span class="sp-c">로그인 아이디</span><input name="name" required maxlength="20" placeholder="예: 홍길동"></label><label>직급<input name="title" required maxlength="30" list="spT-MG"></label><button class="btn main">만들기</button></form>${titleLists()}</section>`;
     } else if (st.data) {
       const tabs = [["staff", "직원·권한"]].concat(sup ? [["settings", "일반 설정"], ["audit", "감사 로그"]] : []);
       body = `<div class="sp-tabs">${tabs.map(([k, n]) => `<button type="button" data-sptab="${k}" aria-pressed="${st.tab === k}">${n}</button>`).join("")}</div>`;
       if (st.tab === "staff") {
         body += `<section class="sp-card"><h3>직원 추가</h3>
-          <p class="sp-g">아이디는 직원에게 알려 줄 로그인 이름입니다(영문 소문자·숫자·. _ -, 3~20자). 저장하면 <b>임시 PIN이 한 번만</b> 나옵니다 — 직원에게 직접 전하고, 직원은 첫 로그인 때 자기 PIN으로 바꿉니다.</p>
+          <p class="sp-g">직원은 <b>자기 이름</b>으로 로그인합니다. 업무 기록의 작성자도 이 이름으로 자동으로 남습니다. 저장하면 <b>임시 PIN이 한 번만</b> 나옵니다 — 직원에게 직접 전하고, 직원은 첫 로그인 때 자기 PIN으로 바꿉니다.</p>
           <form id="spAdd" class="sp-form">
-            <label>아이디<input name="login_id" required maxlength="20"></label>
-            <label>이름<input name="name" required maxlength="40"></label>
-            <label>직급<input name="title" maxlength="30"></label>
-            ${sup ? `<label>부서<select name="dept_code">${st.depts.map(d => `<option value="${esc(d.code)}">${esc(d.name)}</option>`).join("")}</select></label>
-            <label>권한<select name="role"><option value="staff">직원</option><option value="dept_admin">부서 관리자</option></select></label>` : `<label>부서<input value="${esc(deptName(st.data.me.dept_id))}" disabled></label>`}
-            <button class="btn main">추가</button></form></section>
+            ${sup ? `<label>부서<select name="dept_code" id="spDept">${st.depts.map(d => `<option value="${esc(d.code)}">${esc(d.name)}</option>`).join("")}</select></label>` : `<label>부서<input value="${esc(deptName(st.data.me.dept_id))}" disabled></label>`}
+            <label>이름<input name="name" required maxlength="20" placeholder="예: 홍길동"></label>
+            <label>직급<input name="title" id="spTitle" required maxlength="30" list="spT-${esc(sup ? (st.depts[0] || {}).code || "FO" : deptCode(st.data.me.dept_id))}" placeholder="골라 주십시오"></label>
+            ${sup ? `<label>권한<select name="role"><option value="staff">직원</option><option value="dept_admin">부서 관리자</option></select></label>` : ""}
+            <label>아이디 <span class="sp-c">같은 이름이 있을 때만</span><input name="login_id" maxlength="20" placeholder="비우면 이름 (예: 홍길동2)"></label>
+            <button class="btn main">추가</button></form>${titleLists()}</section>
           <section class="sp-card"><h3>직원 목록 <span class="sp-c">${st.data.staff.length}명</span></h3>
           <div class="scroll"><table class="sp-t"><thead><tr><th>이름</th><th>아이디</th><th>부서</th><th>권한</th><th>상태</th><th>최근 로그인</th><th></th></tr></thead><tbody>
           ${st.data.staff.map(s => {
@@ -129,11 +139,14 @@
     else if (a === "set_role") await act(() => call({ action: "set_role", user_id: u, role: b.dataset.v }), "권한을 바꿨습니다.");
     else if (a === "edit") {
       const name = prompt("이름", s ? s.name : ""); if (name === null) return;
-      const title = prompt("직급(없으면 비워 두기)", s ? s.title : ""); if (title === null) return;
-      await act(() => call({ action: "update", user_id: u, name, title }), "정보를 바꿨습니다.");
+      const opts = TITLES[deptCode(s && s.dept_id)] || [];
+      const title = prompt("직급" + (opts.length ? " (예: " + opts.join(", ") + ")" : ""), s ? s.title : ""); if (title === null) return;
+      const login_id = prompt("로그인 아이디(보통 이름과 같게. 같은 이름이 있으면 홍길동2처럼)", s ? (s.login_id === (s.name || "").replace(/\s+/g, "") ? name.replace(/\s+/g, "") : s.login_id) : ""); if (login_id === null) return;
+      await act(() => call({ action: "update", user_id: u, name, title, login_id }), "정보를 바꿨습니다.");
     }
   });
   document.addEventListener("change", async e => {
+    if (e.target.id === "spDept") { const t = document.getElementById("spTitle"); if (t) { t.setAttribute("list", "spT-" + e.target.value); t.value = ""; } return; }
     const sel = e.target.closest && e.target.closest("select[data-sp=move_dept]"); if (!sel) return;
     if (!confirm("부서를 옮깁니다.")) { render(); return; }
     await act(() => call({ action: "move_dept", user_id: sel.dataset.u, dept_code: sel.value }), "부서를 옮겼습니다.");
@@ -144,7 +157,7 @@
     const v = Object.fromEntries(new FormData(f).entries());
     if (f.id === "spAdd" || f.id === "spBoot") {
       const r = await act(() => call(Object.assign({ action: f.id === "spBoot" ? "bootstrap" : "create" }, v)), f.id === "spBoot" ? "프로그램 관리자 계정을 만들었습니다. 잠금 후 개인 아이디로 로그인하십시오." : "직원을 추가했습니다.");
-      if (r && r.temp_pin) { st.shown = { name: v.name, pin: r.temp_pin, login_id: r.login_id }; f.reset(); render(); }
+      if (r && r.temp_pin) { st.shown = { name: v.name, pin: r.temp_pin, login_id: r.login_id }; render(); }
     } else if (f.id === "spSet") {
       await act(() => call({ action: "settings", idle_logout_min: Number(v.idle_logout_min), legacy_dept_login: !!v.legacy_dept_login }), "설정을 저장했습니다.");
     }

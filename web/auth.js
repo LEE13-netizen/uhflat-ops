@@ -169,9 +169,9 @@
     let body;
     if (S.mode === "personal") {
       body = `<form class="gform" id="gIdForm" autocomplete="off">
-          <label class="gid"><span>아이디</span><input id="gId" value="${esc(S.id)}" inputmode="latin" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="예: kim.hj" aria-label="아이디"></label>
+          <label class="gid"><span>이름</span><input id="gId" value="${esc(S.id)}" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="예: 홍길동" aria-label="이름(아이디)"></label>
         </form>
-        ${dots()}${msg("아이디를 적고 PIN 6자리를 누르십시오")}${pad()}
+        ${dots()}${msg("이름을 적고 PIN 6자리를 누르십시오")}${pad()}
         ${CFG.legacyDeptLogin ? `<button type="button" class="gback" id="gLegacy">부서 공용 PIN으로 들어가기 (병행 기간)</button>` : ""}`;
     } else if (!S.pick) {
       body = `${msg("부서 공용 계정 — 근무 부서를 고르십시오")}
@@ -187,8 +187,8 @@
 
   async function tryLogin() {
     if (S.mode === "personal") {
-      const id = ($("gId") ? $("gId").value : S.id).trim().toLowerCase(); S.id = id;
-      if (!/^[a-z0-9._-]{3,20}$/.test(id)) { S.pin = ""; S.msg = "아이디를 확인해 주십시오"; S.err = true; renderGate(); return; }
+      const id = ($("gId") ? $("gId").value : S.id).normalize("NFC").replace(/\s+/g, "").toLowerCase(); S.id = id;
+      if (!/^[가-힣a-z0-9._-]{2,20}$/.test(id)) { S.pin = ""; S.msg = "이름(아이디)을 확인해 주십시오"; S.err = true; renderGate(); return; }
       S.busy = true; S.msg = "확인 중…"; S.err = false; renderGate();
       const r = await callFn("login", { login_id: id, pin: S.pin });
       S.busy = false; S.pin = "";

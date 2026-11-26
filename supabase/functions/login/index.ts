@@ -1,16 +1,16 @@
 // 개인 로그인: 아이디 + PIN 6자리 → 잠금 확인 → Supabase Auth 로그인 → 세션 반환
-import { adminClient, anonClient, audit, BRANCH, cors, derivePassword, json, lockFor, PIN_RE } from "../_shared/common.ts";
+import { adminClient, anonClient, audit, BRANCH, cors, derivePassword, ID_RE, json, lockFor, normId, PIN_RE } from "../_shared/common.ts";
 
-const FAIL = "아이디 또는 PIN이 맞지 않습니다.";
+const FAIL = "이름(아이디) 또는 PIN이 맞지 않습니다.";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json(405, { error: "POST만 허용" });
   let body: { login_id?: string; pin?: string };
   try { body = await req.json(); } catch { return json(400, { error: "잘못된 요청" }); }
-  const loginId = String(body.login_id || "").trim().toLowerCase();
+  const loginId = normId(body.login_id);
   const pin = String(body.pin || "");
-  if (!/^[a-z0-9._-]{3,20}$/.test(loginId) || !PIN_RE.test(pin)) return json(401, { error: FAIL });
+  if (!ID_RE.test(loginId) || !PIN_RE.test(pin)) return json(401, { error: FAIL });
 
   const admin = adminClient();
   const { data: p } = await admin.from("profiles")

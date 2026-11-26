@@ -1,11 +1,12 @@
 // 직원·권한 관리. 모든 권한 검사는 여기(서버)에서 한다.
 // 프로그램 관리자(super_admin): 모든 부서·직원, 부서 관리자 지정, 부서 이동, 설정
 // 부서 관리자(dept_admin): 자기 부서의 일반 직원만(추가·정보 수정·PIN 초기화·잠금 해제·비활성화)
-import { adminClient, audit, BRANCH, caller, cors, derivePassword, EMAIL_DOMAIN, json, PEPPER_VERSION, randomPin } from "../_shared/common.ts";
+import { adminClient, audit, BRANCH, caller, cors, derivePassword, EMAIL_DOMAIN, ID_RE, json, normId, PEPPER_VERSION, randomPin } from "../_shared/common.ts";
 
 type Prof = { user_id: string; login_id: string; name: string; title: string; dept_id: string; role: string; active: boolean; must_change_pin: boolean; branch_id: string };
 const PUBLIC = "user_id, login_id, name, title, dept_id, role, active, must_change_pin, branch_id, created_at, deactivated_at";
-const ID_RE = /^[a-z0-9._-]{3,20}$/;
+const ID_MSG = "아이디는 이름(한글)·영문·숫자로 2~20자입니다. 같은 이름이 있으면 '홍길동2'처럼 붙여 주십시오.";
+const ID_DUP = "같은 아이디가 이미 있습니다. 같은 이름이면 아이디를 '홍길동2'처럼 따로 적어 주십시오.";
 const clean = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 
 Deno.serve(async (req) => {
@@ -69,10 +70,19 @@ Deno.serve(async (req) => {
     const patch: Record<string, unknown> = {};
     if (b.name !== undefined) { const n = clean(b.name, 40); if (!n) return json(400, { error: "이름을 적어 주십시오." }); patch.name = n; }
     if (b.title !== undefined) patch.title = clean(b.title, 30);
+    if (b.login_id !== undefined) {
+      const id = normId(b.login_id);
+      if (id !== t.login_id) {
+        if (!ID_RE.test(id)) return json(400, { error: ID_MSG });
+        const { count } = await admin.from("profiles").select("user_id", { count: "exact", head: true }).eq("branch_id", BRANCH).eq("login_id", id);
+        if (count) return json(409, { error: ID_DUP });
+        patch.login_id = id;
+      }
+    }
     if (!Object.keys(patch).length) return json(400, { error: "바꿀 내용이 없습니다." });
     patch.updated_at = new Date().toISOString();
     await admin.from("profiles").update(patch).eq("user_id", t.user_id);
-    await audit(admin, { actor_id: me.user_id, action: "staff_update", target_type: "profile", target_id: t.user_id, before: { name: t.name, title: t.title }, after: patch });
+    await audit(admin, { actor_id: me.user_id, action: "staff_update", target_type: "profile", target_id: t.user_id, before: { name: t.name, title: t.title, login_id: t.login_id }, after: patch });
     return json(200, { ok: true });
   }
 
@@ -133,12 +143,15 @@ Deno.serve(async (req) => {
 
   // 직원 만들기: Auth 계정(내부 이메일) + 임시 PIN + 프로필. 프로필 저장이 실패하면 Auth 계정을 지워 반쪽 계정을 남기지 않는다
   async function createStaff(b: Record<string, unknown>, deptCode: string, role: string, actorId: string): Promise<Response> {
-    const loginId = clean(b.login_id, 20).toLowerCase(), name = clean(b.name, 40), title = clean(b.title, 30);
-    if (!ID_RE.test(loginId)) return json(400, { error: "아이디는 영문 소문자·숫자·. _ - 로 3~20자입니다." });
+    const name = clean(b.name, 40), title = clean(b.title, 30);
+    // 아이디를 따로 적지 않으면 이름이 아이디
+    const loginId = normId(clean(b.login_id, 40) || name);
     if (!name) return json(400, { error: "이름을 적어 주십시오." });
+    if (!title) return json(400, { error: "직급을 골라 주십시오." });
+    if (!ID_RE.test(loginId)) return json(400, { error: ID_MSG });
     const d = await dept(deptCode); if (!d) return json(400, { error: "부서를 찾지 못했습니다." });
     const { count } = await admin.from("profiles").select("user_id", { count: "exact", head: true }).eq("branch_id", BRANCH).eq("login_id", loginId);
-    if (count) return json(409, { error: "이미 쓰는 아이디입니다." });
+    if (count) return json(409, { error: ID_DUP });
     const email = crypto.randomUUID() + "@" + EMAIL_DOMAIN;
     const { data: cu, error: ce } = await admin.auth.admin.createUser({ email, password: crypto.randomUUID() + crypto.randomUUID(), email_confirm: true, app_metadata: { branch: BRANCH, kind: "staff" } });
     if (ce || !cu.user) return json(500, { error: "계정을 만들지 못했습니다." });

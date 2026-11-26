@@ -144,6 +144,19 @@ body .task.need{border:2px solid var(--hot);animation:opsNeed 1s ease-in-out inf
 .undobar{position:fixed;z-index:310;left:50%;bottom:max(16px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:14px;max-width:calc(100vw - 24px);padding:10px 12px 10px 16px;border-radius:12px;background:var(--ink);color:var(--bg);font-size:15px;box-shadow:0 10px 28px rgb(0 0 0/.3)}
 .undobar[hidden]{display:none}
 .undobar button{flex:none;min-height:40px;padding:0 14px;border:0;border-radius:8px;background:var(--bg);color:var(--ink);font-weight:700;cursor:pointer}
+/* 청소·재실 단락: 제목을 누르면 펼치고 접기 */
+.secd{margin:10px 0 0}
+.secd>summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:46px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--soft);cursor:pointer;list-style:none;font-size:16.5px;font-weight:700;color:var(--ink)}
+.secd>summary::-webkit-details-marker{display:none}
+.secd>summary::before{content:"";width:9px;height:9px;border-right:2.5px solid currentColor;border-bottom:2.5px solid currentColor;transform:rotate(-45deg);margin:0 4px 0 2px;transition:transform .15s;flex:none}
+.secd[open]>summary::before{transform:rotate(45deg);margin-top:-4px}
+.secd>summary .c{font:700 15px "Barlow Semi Condensed","Noto Sans KR",sans-serif;background:var(--card);color:var(--ink);padding:0 9px;border-radius:999px}
+.secd>summary small{flex-basis:100%;font-size:13.5px;font-weight:500;color:var(--muted);padding-left:19px}
+.secd>summary:hover{border-color:var(--ink)}
+.secd>summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.secd[open]>.slist,.secd[open]>.secacts{margin-top:8px}
+.secacts{display:flex;justify-content:flex-end}
+@media(prefers-reduced-motion:reduce){.secd>summary::before{transition:none}}
 /* 받은 편지함 */
 .ibbar{gap:8px;flex-wrap:wrap;align-items:center}
 .ibbar input{height:42px;width:9em;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:16px;padding:0 10px}

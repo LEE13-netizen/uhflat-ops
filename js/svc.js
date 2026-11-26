@@ -74,7 +74,7 @@
   // [web] 키핑이 직접 퇴실을 확인한 객실(프론트 퇴실완 전에 손님이 나감) → 프론트가 읽었는가
   function foCoNeedsAck(row) {
     const s = row.s || {};
-    if (row.type !== "out" || !s.co || s.co.role !== "HK" || s.ext || s.done) return false;
+    if (row.type !== "out" || !s.co || !s.co.role || s.co.role === "FO" || s.ext || s.done) return false;   // 프론트가 아닌 사람(키핑·관리자)이 퇴실을 기록
     return !(s.foCoAck && s.foCoAck.at >= s.co.at);
   }
 
@@ -180,8 +180,9 @@
     // [web] 키핑: 손님이 나간 것을 직접 확인(프론트 퇴실완 전). 퇴실완과 같게 기록하고(비번 변경 업무 포함), 키핑 확인·청소 시작까지
     hkCheckout: async (date, id, cur, actor, room, startNow) => {
       const doc = await OPS.Svc.checkout(date, id, cur, actor, room);
-      const p = { hkAck: by(actor) }; if (startNow) p.start = by(actor);
-      return write(date, id, doc, p, actor, startNow ? "키핑 퇴실 확인·청소 시작" : "키핑 퇴실 확인");
+      const p = actor.role === "HK" ? { hkAck: by(actor) } : {}; if (startNow) p.start = by(actor);   // 관리자가 누르면 키핑에는 "새로 온 것"으로 남긴다
+      const who = actor.role === "HK" ? "키핑" : "관리자";
+      return write(date, id, doc, p, actor, startNow ? who + " 퇴실 확인·청소 시작" : who + " 퇴실 확인");
     },
     foCoAck: (date, id, cur, actor) => write(date, id, cur, { foCoAck: by(actor) }, actor, "프론트 확인(키핑 퇴실 확인)"),
     // 키핑: 청소하러 갔는데 아직 손님이 있음 → 프론트가 레이트·연장·퇴실완으로 답한다

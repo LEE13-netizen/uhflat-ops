@@ -16,23 +16,24 @@
    SIZE 본문 16px, 누르는 곳 44px 이상, "글자 크게"를 누르면 화면 전체 1.15배
    ONE BOLD THING 객실 번호를 표지판처럼 크게. 나머지는 조용하게 */
 :root{color-scheme:light dark;
---bg:light-dark(#EDF1F4,#0F1720);
---card:light-dark(#FFFFFF,#18222D);
---ink:light-dark(#16212C,#E9EEF2);
---muted:light-dark(#4D5B69,#A8B5C2);
---line:light-dark(#C5D0DA,#334252);
---soft:light-dark(#E1E7EC,#223040);
---accent:light-dark(#00727A,#5CC8C2);
---accent-bg:light-dark(#DDF0F0,#173B3D);
---on-accent:light-dark(#FFFFFF,#0F1720);
---hot:light-dark(#C0262D,#FF7A72);
---hot-bg:light-dark(#FCE8E8,#3A1D20);
---warn:light-dark(#8A5A00,#F2B84B);
---warn-bg:light-dark(#FFF1D6,#3A2E14);
---ok:light-dark(#1E7A43,#6FD49A);
---ok-bg:light-dark(#DFF3E6,#16352A);
---outc:light-dark(#2C62B4,#7FB2FF);
---out-bg:light-dark(#E1EBF8,#1B2C45);
+/* [web] 어두운 모드 = 서초 야간 검수 프로그램 톤(무채색 짙은 회색 + 청동색 강조). 긴급은 구분되게 붉은 기를 남김 */
+--bg:light-dark(#EDF1F4,hsl(220 3% 12%));
+--card:light-dark(#FFFFFF,hsl(220 3% 15.5%));
+--ink:light-dark(#16212C,hsl(220 3% 93%));
+--muted:light-dark(#4D5B69,hsl(220 3% 64%));
+--line:light-dark(#C5D0DA,hsl(220 3% 24%));
+--soft:light-dark(#E1E7EC,hsl(220 3% 19%));
+--accent:light-dark(#00727A,hsl(28 26% 58%));
+--accent-bg:light-dark(#DDF0F0,hsl(220 3% 20%));
+--on-accent:light-dark(#FFFFFF,hsl(220 3% 12%));
+--hot:light-dark(#C0262D,hsl(6 62% 64%));
+--hot-bg:light-dark(#FCE8E8,hsl(6 22% 18%));
+--warn:light-dark(#8A5A00,hsl(28 46% 60%));
+--warn-bg:light-dark(#FFF1D6,hsl(28 14% 17%));
+--ok:light-dark(#1E7A43,hsl(145 24% 62%));
+--ok-bg:light-dark(#DFF3E6,hsl(145 10% 17%));
+--outc:light-dark(#2C62B4,hsl(212 32% 70%));
+--out-bg:light-dark(#E1EBF8,hsl(212 10% 19%));
 --radius:12px;
 }
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}

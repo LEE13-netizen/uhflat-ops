@@ -9,6 +9,8 @@
   const OPS = window.OPS = window.OPS || {};
   const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { auth: { persistSession: true, autoRefreshToken: true, storageKey: "ops-auth-" + CFG.env } });
   OPS.SB = sb;
+  // 첫 화면(로그인)은 기기 설정과 상관없이 늘 밝은(주간) 화면. 들어간 뒤에는 앱의 밝기 설정을 따른다
+  document.documentElement.dataset.theme = "light";
   const FN = CFG.supabaseUrl + "/functions/v1/";
   const APP_SCRIPTS = window.OPS_APP_SCRIPTS || [];
   // 앱 부서(v0.23): 프론트·키핑·시설·매니지먼트(MN) + 관리자(MG = 프로그램 관리자 전용)

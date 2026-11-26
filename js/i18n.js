@@ -25,7 +25,7 @@
     ["무응답·청소 없음", "No reply · no cleaning"], ["쓰레기·수건만", "Trash/towels only"], ["점검 완료·입실 가능", "Inspected · ready"], ["청소 끝(점검 대기)", "Cleaned (to inspect)"],
     ["입실 가능", "Ready"], ["점검 대기", "To inspect"], ["청소 대기", "To clean"], ["청소 중", "Cleaning"], ["청소 시작", "Start cleaning"], ["청소 완료", "Cleaned"], ["청소 없음", "No cleaning"],
     ["아직 재실", "Guest still in"], ["회신 대기", "Waiting reply"], ["발송 전", "Not sent"], ["시간 확정", "Time set"], ["재실 청소", "Stay-over clean"], ["요청만", "Requests only"],
-    ["전체재실", "Full stay-over"], ["재실청소", "Stay-over"], ["객실청소", "Check-out clean"], ["당일 입실", "Same-day check-in"], ["퇴실 전", "Before check-out"], ["퇴실완", "Checked out"],
+    ["전체재실", "Full stay-over"], ["재실청소", "Stay-over"], ["전체 청소", "Full clean"], ["일반 청소", "Light service"], ["퇴실 청소", "Check-out clean"], ["퇴실 완료", "Checked out"], ["입실 가능", "Ready"], ["점검 대기", "Awaiting inspection"], ["객실청소", "Check-out clean"], ["당일 입실", "Same-day check-in"], ["퇴실 전", "Before check-out"], ["퇴실완", "Checked out"],
     ["입실 우선", "priority check-in"], ["우선 준비", "Priority"], ["레이트", "Late C/O"], ["연장", "Extended"], ["무응답", "No reply"], ["청소 X", "No cleaning"], ["청소 끝", "Cleaned"],
     ["퇴실", "Check-out"], ["입실", "Check-in"], ["연박", "Stay-over"], ["공실", "Vacant"], ["재실", "In-house"], ["예상", "est."],
     // 키핑 청소 화면

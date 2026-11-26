@@ -307,3 +307,20 @@ table.stack tr.fac td{font-size:12.5px;color:var(--muted);background:var(--bg);b
 .kd{display:inline-block;padding:1px 8px;border-radius:6px;font-size:12.5px;font-weight:700;white-space:nowrap}
 .kd.full{background:var(--accent);color:var(--on-accent)}
 .kd.lite{border:1.5px solid var(--accent);color:var(--accent);background:none}
+/* [web] 객실 상세 단계 바 */
+.stepw{margin:10px 0 6px;padding:12px 14px;border:1.5px solid var(--accent);border-radius:12px;background:var(--bg)}
+.steph{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;margin-bottom:8px}.steph b{font-size:16px}
+ol.steps{list-style:none;margin:0 0 10px;padding:0;display:flex;gap:4px;counter-reset:none}
+ol.steps li{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12.5px;color:var(--muted);text-align:center;position:relative}
+ol.steps li i{font-style:normal;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:700 13px "Barlow Semi Condensed",sans-serif;border:2px solid var(--line);background:var(--card);color:var(--muted)}
+ol.steps li.past i{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+ol.steps li.now i{background:var(--accent);border-color:var(--accent);color:var(--on-accent);transform:scale(1.15)}
+ol.steps li.now span{color:var(--ink);font-weight:700}
+ol.steps li:not(:last-child)::after{content:"";position:absolute;top:13px;left:calc(50% + 16px);right:calc(-50% + 16px);height:2px;background:var(--line)}
+ol.steps li.past:not(:last-child)::after{background:var(--ok)}
+.btn.big{width:100%;min-height:54px;font-size:17px;font-weight:700}
+.stepn{margin:4px 0}
+.stepnote{margin:6px 0 0;font-weight:600;color:var(--ink)}
+.steps2{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
+.steps2 .lt{display:inline-flex;gap:6px;align-items:center}
+.steps2 .lt input{height:36px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:0 8px}

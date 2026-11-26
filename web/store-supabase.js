@@ -29,12 +29,35 @@
       const next = v.some(x => x === "CHANNEL_ERROR" || x === "TIMED_OUT" || x === "CLOSED") ? "down" : v.every(x => x === "SUBSCRIBED") ? "ok" : "connecting";
       if (next !== OPS.Conn.state) { OPS.Conn.state = next; try { dispatchEvent(new Event("ops-conn")); } catch (e) {} }
     };
+    // 삭제 알림: Supabase는 DELETE 알림에 필터(col=eq.…)를 걸 수 없어 모음별 구독으로는 오지 않는다.
+    // 필터 없는 삭제 전용 구독 하나를 두고, 알림의 기본키(col, id)로 해당 모음에서 뺀다.
+    // (RLS가 켜진 표는 삭제 알림에 기본키만 담기는데, 이 표의 기본키가 col+id라 충분하다)
+    let delCh = null;
+    function watchDeletes() {
+      if (delCh) return;
+      delCh = sb.channel("ops:_del")
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: T }, p => {
+          const o = p.old || {}; const h = hubs[o.col];
+          if (h && o.id != null && h.map.delete(o.id)) h.emit();
+        })
+        .subscribe(s => connUpdate("_del", s));
+    }
+    // 화면을 5분 넘게 가려 두었다가(휴대폰 잠금·다른 탭) 돌아오면 놓친 변경을 다시 불러온다
+    let hiddenAt = 0;
+    try {
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) { hiddenAt = Date.now(); return; }
+        if (hiddenAt && Date.now() - hiddenAt > 5 * 60e3) Object.values(hubs).forEach(h => h.load());
+        hiddenAt = 0;
+      });
+    } catch (e) {}
     function hub(c) {
       if (hubs[c]) return hubs[c];
+      watchDeletes();
       const h = hubs[c] = { map: new Map(), fns: new Set(), ready: false, errs: new Set() };
       const emit = () => { const list = Array.from(h.map.values()); h.fns.forEach(fn => { try { fn(list); } catch (e) {} }); };
       h.emit = emit;
-      const load = () => fetchAll(c).then(list => { h.map = new Map(list.map(x => [x.id, x])); h.ready = true; emit(); }).catch(e => h.errs.forEach(f => f(e)));
+      const load = h.load = () => fetchAll(c).then(list => { h.map = new Map(list.map(x => [x.id, x])); h.ready = true; emit(); }).catch(e => h.errs.forEach(f => f(e)));
       h.ch = sb.channel("ops:" + c)
         .on("postgres_changes", { event: "*", schema: "public", table: T, filter: "col=eq." + c }, p => {
           if (p.eventType === "DELETE") { const id = p.old && p.old.id; if (id) h.map.delete(id); }

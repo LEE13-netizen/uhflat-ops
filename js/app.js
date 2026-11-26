@@ -314,13 +314,13 @@
     const card = id => {
       const r = M.rooms[id], s = roomState(id, st.rdate), ts = Core.sort(byRoom.get(id) || []);
       const hot = ts.some(t => t.priority === "긴급");
-      return `<div class="rc ${hot ? "hot" : ""}">
-        <div class="rh"><span class="rn">${multiB() ? `<small>${esc(r.building)}</small>` : ""}${esc(r.no)}</span><span class="rt">${esc(r.type || "")}${r.dong ? " · " + esc(r.dong) + "동" : ""}</span></div>
-        <div class="rs">${s && s.stay ? `<span class="chip ${STAY_CLS[s.stay] || ""}">${esc(s.stay)}</span>` : `<span class="chip">상태 없음</span>`}${s && s.clean ? `<span class="chip k">${esc(s.clean)}${s.cleanFromSheet ? "" : " 예상"}</span>` : ""}${s && s.flags && s.flags.length ? `<span class="chip warn" title="${esc(s.flags.join(" / "))}">확인 ${s.flags.length}</span>` : ""}</div>
+      return `<div class="isu-c ${hot ? "hot" : ""}">
+        <div class="isu-h"><span class="isu-n">${multiB() ? `<small>${esc(r.building)}</small>` : ""}${esc(r.no)}</span><span class="isu-t">${esc(r.type || "")}${r.dong ? " · " + esc(r.dong) + "동" : ""}</span></div>
+        <div class="isu-s">${s && s.stay ? `<span class="chip ${STAY_CLS[s.stay] || ""}">${esc(s.stay)}</span>` : `<span class="chip">상태 없음</span>`}${s && s.clean ? `<span class="chip k">${esc(s.clean)}${s.cleanFromSheet ? "" : " 예상"}</span>` : ""}${s && s.flags && s.flags.length ? `<span class="chip warn" title="${esc(s.flags.join(" / "))}">확인 ${s.flags.length}</span>` : ""}</div>
         ${ts.length ? `<ul class="rtasks">${ts.slice(0, 3).map(t => `<li><a href="#${esc(st.role.toLowerCase())}" data-open="${esc(t.id)}"><span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${esc(t.title)}</a><span class="w">${esc(OPS.deptName(t.toDept))} · ${esc(t.status)}${Core.isOverdue(t) ? " · 기한 초과" : ""}</span></li>`).join("")}${ts.length > 3 ? `<li class="w">외 ${ts.length - 3}건</li>` : ""}</ul>` : `<div class="w">열린 업무 없음</div>`}
       </div>`;
     };
-    const looseCard = ([k, ts]) => `<div class="rc loose ${ts.some(t => t.priority === "긴급") ? "hot" : ""}"><div class="rh"><span class="rn sm">${esc(k)}</span><span class="rt">${M ? "공용 구역·객실 미확인" : ""}</span></div><ul class="rtasks">${Core.sort(ts).map(t => `<li><a href="#${esc(st.role.toLowerCase())}" data-open="${esc(t.id)}"><span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${esc(t.title)}</a><span class="w">${esc(OPS.deptName(t.toDept))} · ${esc(t.status)}</span></li>`).join("")}</ul></div>`;
+    const looseCard = ([k, ts]) => `<div class="isu-c loose ${ts.some(t => t.priority === "긴급") ? "hot" : ""}"><div class="isu-h"><span class="isu-n sm">${esc(k)}</span><span class="isu-t">${M ? "공용 구역·객실 미확인" : ""}</span></div><ul class="rtasks">${Core.sort(ts).map(t => `<li><a href="#${esc(st.role.toLowerCase())}" data-open="${esc(t.id)}"><span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${esc(t.title)}</a><span class="w">${esc(OPS.deptName(t.toDept))} · ${esc(t.status)}</span></li>`).join("")}</ul></div>`;
     const looseArr = Array.from(loose.entries()).filter(([k]) => !q || k.startsWith(q)).sort((a, b) => cmpKey(urgencyKey(a[1]), urgencyKey(b[1])));
     const src = d && d.src ? [d.src.reservation ? `예약표 ${hm(d.src.reservation.at)}` : "", d.src.clean ? `청소표 ${hm(d.src.clean.at)}` : ""].filter(Boolean).join(" · ") : "";
     return `<section class="card">

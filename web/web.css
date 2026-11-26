@@ -71,6 +71,45 @@ body.webhead .me{flex-wrap:nowrap}
   .sideme .me #lockBtn{grid-column:1/-1}
 }
 
+/* 확인 안 한 것(미확인) = 빨간 깜빡임. 긴급(빨간 글자 칩·고정)과는 깜빡임으로 구분 */
+@keyframes opsNeed{0%,100%{background-color:var(--card)}50%{background-color:var(--hot-bg)}}
+@keyframes opsNeedSvg{0%,100%{fill:var(--card)}50%{fill:var(--hot-bg)}}
+body .rt.need{border-color:var(--hot);animation:opsNeed 1s ease-in-out infinite}
+body .tf.need{background:var(--hot);color:#fff}
+body .tile.need,body .tile.need.hot{animation:opsNeed 1s ease-in-out infinite}
+body .pr.need rect.bg,body .pr.need.hot rect.bg{animation:opsNeedSvg 1s ease-in-out infinite;stroke:var(--hot)}
+body .srow.blinkrow{animation:opsNeed 1s ease-in-out infinite;border-color:var(--hot)!important}
+body .task.need{border:2px solid var(--hot);animation:opsNeed 1s ease-in-out infinite}
+.unread{display:inline-block;padding:1px 8px;border-radius:999px;font-size:13px;font-weight:700;white-space:nowrap;background:var(--hot);color:#fff}
+.rdy-r{display:inline-block;padding:1px 8px;border-radius:999px;font-size:13px;font-weight:700;white-space:nowrap}
+.rdy-r.no{background:var(--warn-bg);color:var(--warn)}
+.rdy-r.yes{background:var(--ok-bg);color:var(--ok)}
+@media(prefers-reduced-motion:reduce){body .rt.need,body .tile.need,body .srow.blinkrow,body .task.need{animation:none!important;background-color:var(--hot-bg)}body .pr.need rect.bg{animation:none!important;fill:var(--hot-bg)}}
+
+/* 객실 상세 읽기 쉽게: 칸 제목을 키우고 칸 사이에 줄, 본문 15~16px, 객실 번호는 내려도 위에 남는다 */
+.dlg h3{position:sticky;top:-18px;z-index:2;background:var(--card);margin:-18px -18px 4px;padding:14px 56px 10px 18px;font-size:22px}
+.dlg>.x{position:sticky;top:-10px;z-index:3;background:var(--card);border-radius:50%}
+.dlg h4{font-size:17px;margin:18px 0 8px;padding-top:14px;border-top:1px solid var(--line)}
+.dlg h4 .c{font-size:15px;color:var(--ink);background:var(--soft);padding:0 8px;border-radius:999px}
+.dlg .stayb h4{border-top:0;padding-top:0;margin-top:10px}
+.dlg .stayb.empty{border:0;background:none;padding:0;margin:0 0 10px;font-size:14px;color:var(--muted)}
+.dlg .tl li{font-size:15px;line-height:1.5}
+.dlg .tl .w{font-size:13.5px}
+.dlg .note .nt{font-size:16px;line-height:1.55}
+.dlg .note .nh{font-size:15px;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px}
+.dlg .note .nh b{white-space:nowrap}
+.dlg .note .nh .lnk{margin-left:auto;white-space:nowrap}
+.dlg p.sub.nguide{font-size:13px;color:var(--muted);margin:6px 0 0}
+.dlg .task .meta{font-size:14px;line-height:1.5}
+.dlg .task .t{font-size:16.5px}
+.dlg .list .task{grid-template-columns:minmax(0,1fr) auto}
+.dlg .list .task .t{grid-column:1}
+.dlg .list .task .meta{grid-column:1/-1}
+.dlg .stayb.empty p{text-align:left;margin:0}
+.dlg .svcl{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.task .meta .rdy-r{font-size:12.5px}
+.dlg .svcl{font-size:14.5px;color:var(--muted);margin:2px 0 4px;line-height:1.5}
+
 /* 일반 설정 · 직원·권한 창 */
 .sp{position:fixed;inset:0;z-index:90;overflow-y:auto;background:var(--bg);padding:16px max(16px,3vw) 40px}
 .sp[hidden]{display:none}

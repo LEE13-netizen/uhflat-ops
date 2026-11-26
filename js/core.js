@@ -128,6 +128,18 @@
       if (OPS.isMgr(role) || role === "FO") return true;           // 프론트는 응대 창구라 모든 열린 업무를 확인
       return t.toDept === role || (t.fromDept === role && t.status === "완료 대기");
     },
+    // [web] 읽음 표시: 지금 읽어야 할 부서 = 받은 부서(완료 보고면 요청 부서). 그 부서 누구든 열거나 확인·처리하면 읽음.
+    // events를 주면 읽은 사람 이름도 찾는다(읽은 시각과 가장 가까운 그 부서 기록).
+    readState(t, events) {
+      if (!OPS.OPEN.has(t.status)) return null;
+      const dept = t.status === "완료 대기" ? t.fromDept : t.toDept;
+      if (!dept || t.fromDept === t.toDept) return null;
+      const at = (t.ack && t.ack[dept]) || 0;
+      if (!at) return { dept, at: 0 };
+      let who = null;
+      (events || []).forEach(e => { if (e.taskId === t.id && e.role === dept && Math.abs(e.at - at) < 60000 && (!who || Math.abs(e.at - at) < Math.abs(who.at - at))) who = e; });
+      return { dept, at, by: who ? who.by : "", uid: who ? who.uid : "" };
+    },
     async ack(t, actor) {
       if (t.ack && t.ack[actor.role]) return t;
       const ack = Object.assign({}, t.ack || {}, { [actor.role]: Date.now() });

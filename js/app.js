@@ -136,7 +136,7 @@
     const mk = document.querySelector(".mark small");
     if (mk) mk.textContent = (OPS.CTX.propertyName ? OPS.CTX.propertyName + " · " : "") + "통합 업무 시스템 · " + OPS.VERSION + (OPS.Auth ? " · 웹" : " · 1인 시험판");
     $("roles").innerHTML = STAFF_DEPTS().filter(d => canRole(d.id)).map(d => {
-      const n = st.tasks.filter(t => Core.needsAck(t, d.id)).length + (d.id === "HK" && st.master ? svcRows().filter(OPS.Svc.hkNeedsAck).length : 0);
+      const n = st.tasks.filter(t => Core.needsAck(t, d.id)).length + (d.id === "HK" && st.master ? svcRows().filter(OPS.Svc.hkNeedsAck).length : 0) + (d.id === "FO" && st.master ? svcRows().filter(OPS.Svc.foNeedsAck).length : 0);
       return `<button type="button" data-role="${d.id}" aria-pressed="${d.id === st.role}" aria-label="${esc(d.en + " " + d.name)}${n ? ", 확인 필요 " + n + "건" : ""}"><span class="rc">${icon(d.id)}</span><span class="rl"><span class="re">${esc(d.en)}</span><span class="rk">${esc(d.name)}</span></span>${n ? `<span class="n">${n}</span>` : ""}</button>`;
     }).join("");
     const me = OPS.DEPTS.find(d => d.id === st.role) || {};
@@ -150,7 +150,7 @@
       return 0;
     };
     // 메뉴 버튼 숫자 = 지금 부서가 볼 것(확인 필요 + 탭 숫자)
-    const myN = st.tasks.filter(t => Core.needsAck(t, st.role)).length + (st.role === "HK" && st.master ? svcRows().filter(OPS.Svc.hkNeedsAck).length : 0) + TABS.reduce((a, t) => a + badge(t.id), 0);
+    const myN = st.tasks.filter(t => Core.needsAck(t, st.role)).length + (st.role === "HK" && st.master ? svcRows().filter(OPS.Svc.hkNeedsAck).length : 0) + (st.role === "FO" && st.master ? svcRows().filter(OPS.Svc.foNeedsAck).length : 0) + TABS.reduce((a, t) => a + badge(t.id), 0);
     const mb = $("menuBadge"); if (mb) { mb.hidden = !myN; mb.textContent = myN; }
     // 쓰는 메뉴와 아직 준비 중인 메뉴(교대·체크리스트)를 나눠 그린다
     const tabBtn = t => { const n = badge(t.id); return `<button type="button" role="tab" data-tab="${t.id}" aria-selected="${t.id === st.tab}">${esc(t.name)}${n ? `<span class="tbadge">${n}</span>` : ""}${t.later ? `<span class="later">${esc(t.later)}</span>` : ""}</button>`; };
@@ -164,12 +164,23 @@
     const acts = Core.actions(t, role);
     const late = Core.isOverdue(t);
     const go = acts[0] ? `<button type="button" class="btn ${acts[0].to === "진행 중" || acts[0].to === "완료" || acts[0].to === "완료 대기" ? "main" : ""} go" data-act="${esc(acts[0].to)}" data-id="${esc(t.id)}">${esc(acts[0].label)}</button>` : "";
-    return `<div class="task ${t.priority === "긴급" && Core.isOpen(t) ? "hot" : ""}" tabindex="0" data-open="${esc(t.id)}">
+    const need = Core.needsAck(t, role);
+    return `<div class="task ${t.priority === "긴급" && Core.isOpen(t) ? "hot" : ""} ${need ? "need" : ""}" tabindex="0" data-open="${esc(t.id)}">
       <span class="room ${t.room ? "" : "none"}">${t.room ? (bTag(t) ? `<small>${esc(bTag(t))}</small>` : "") + esc(t.room) : "위치<br>없음"}</span>
-      <span class="t"><span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${esc(t.title)}</span>
+      <span class="t">${need ? `<span class="unread">확인 필요</span> ` : ""}<span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${esc(t.title)}</span>
       ${go}
-      <span class="meta">${esc(OPS.kindName(t.kind))} · ${esc(OPS.deptName(t.fromDept))} → ${esc(OPS.deptName(t.toDept))} · <span class="st">${esc(t.status)}</span> · ${esc(nameOf(t.createdUid, t.createdBy !== "(이름 없음)" ? t.createdBy : "") || "(이름 없음)")} ${esc(ago(t.createdAt))}${late ? ` · <span class="late">기한 초과</span>` : ""}</span>
+      <span class="meta">${esc(OPS.kindName(t.kind))} · ${esc(OPS.deptName(t.fromDept))} → ${esc(OPS.deptName(t.toDept))} · <span class="st">${esc(t.status)}</span> · ${esc(nameOf(t.createdUid, t.createdBy !== "(이름 없음)" ? t.createdBy : "") || "(이름 없음)")} ${esc(ago(t.createdAt))}${late ? ` · <span class="late">기한 초과</span>` : ""}${readChip(t, st.events, role) ? " · " + readChip(t, st.events, role) : ""}</span>
     </div>`;
+  }
+  // [web] 읽음 표시 칩: 받은 부서(완료 보고면 요청 부서)가 읽었는가. 그 부서 화면에는 안 보인다(대신 깜빡임)
+  const rdTime = at => { const h = hm(at); return OPS.ymd(at) === OPS.ymd(Date.now()) ? h.split(" ")[1] : h; };
+  function readChip(t, events, role) {
+    const r = Core.readState(t, events);
+    if (!r || r.dept === (role || st.role)) return "";
+    const dn = esc(OPS.deptName(r.dept));
+    if (!r.at) return `<span class="rdy-r no" title="${dn}에서 아직 열어 보지 않았습니다">${dn} 읽지 않음</span>`;
+    const nm = r.by ? nameOf(r.uid, r.by) : "";
+    return `<span class="rdy-r yes" title="${dn}에서 읽음">${dn} 읽음 ${esc(rdTime(r.at))}${nm ? " " + esc(nm) : ""}</span>`;
   }
   const multiB = () => !!(st.master && st.master.buildings && st.master.buildings.length > 1);
   const bTag = t => (multiB() && t.building ? ((st.master.buildings.find(b => b.id === t.building) || {}).name || "") : "");
@@ -558,6 +569,7 @@
       if (ts.some(t => t.priority === "긴급")) hotIds.add(id);
     });
     if (st.role === "HK" && !demo) svcRows().forEach(x => { if (OPS.Svc.hkNeedsAck(x)) needIds.add(x.id); });
+    if (st.role === "FO" && !demo) svcRows().forEach(x => { if (OPS.Svc.foNeedsAck(x)) needIds.add(x.id); });   // [web] 입실 가능 미확인
     const K = demo ? null : kpiSets(M, by, needIds, hotIds);
     const fset = st.bf && K ? (K.sets[st.bf] || new Set()) : null;
     const mode = fset ? "grid" : st.bMode;   // 숫자를 눌러 거를 때는 블록으로 본다
@@ -985,11 +997,19 @@
   }
 
   function chip(x) { const t = OPS.Svc.status(x); return `<span class="chip ${SVC_CLS[t] || ""}">${esc(t)}</span>`; }
+  // [web] 읽음 표시: 프론트→키핑(퇴실완·재실 요청)은 "키핑 읽음", 키핑→프론트(입실 가능)는 "프론트 읽음"
+  const rdWho = o => `${tAt(o)} ${nameOf(o.uid, o.by && o.by !== "(이름 없음)" ? o.by : "") || ""}`.trim();
+  function foRead(x) {
+    const s = x.s || {};
+    if (x.type !== "out" || !s.done || s.ext) return "";
+    if (OPS.Svc.foNeedsAck(x)) return `<span class="rdy-r no">프론트 읽지 않음</span>`;
+    return s.foAck && s.foAck.at >= s.done.at ? `<span class="rdy-r yes">프론트 읽음 ${esc(rdWho(s.foAck))}</span>` : "";
+  }
   function ackLine(x) {
     const s = x.s || {};
-    if (OPS.Svc.hkNeedsAck(x)) return `<span class="w warnt">키핑 미확인</span>`;
-    if (s.done) return `<span class="w">완료 ${esc(whoLine(s.done, { short: true }))}${s.done.small || s.done.large ? ` · 작${s.done.small} 큰${s.done.large}` : ""}</span>`;
-    if (s.hkAck) return `<span class="w">키핑 확인 ${esc(whoLine(s.hkAck, { short: true }))}</span>`;
+    if (OPS.Svc.hkNeedsAck(x)) return `<span class="rdy-r no">키핑 읽지 않음</span>`;
+    if (s.done) return `<span class="w">완료 ${esc(whoLine(s.done, { short: true }))}${s.done.small || s.done.large ? ` · 수건 작${s.done.small} 큰${s.done.large}` : ""}</span>${foRead(x)}`;
+    if (s.hkAck) return `<span class="rdy-r yes">키핑 읽음 ${esc(rdWho(s.hkAck))}</span>`;
     return "";
   }
 
@@ -1012,11 +1032,12 @@
     };
     const outRow = x => {
       const s = x.s, need = OPS.Svc.foNeeds(x), editing = (st.svcEdit === x.id || need) && !ro;
+      const foA = !ro && st.role === "FO" && OPS.Svc.foNeedsAck(x);   // [web] 입실 가능을 프론트가 아직 안 읽음
       const stage = s.done ? "" : s.cleaned ? `청소 끝 ${tAt(s.cleaned)}` : s.start ? `청소 시작 ${tAt(s.start)}` : "";
-      return `<div class="srow ${need ? "pend blinkrow" : OPS.Svc.hkNeedsAck(x) ? "pend" : ""}">
+      return `<div class="srow ${need || foA ? "pend blinkrow" : OPS.Svc.hkNeedsAck(x) ? "pend" : ""}">
         <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${x.sameDayIn ? `<span class="chip in">당일 입실</span>` : ""}${chip(x)}${s.prio ? `<span class="chip k">우선 ${esc(s.prio.time)}</span>` : ""}${s.late && s.co ? `<span class="chip k">레이트 ${esc(s.late.time)}</span>` : ""}${s.pwGiven ? `<span class="chip warn">비번 제공</span>` : ""}${stage ? `<span class="w" style="display:inline">${esc(stage)}</span>` : ""}</div>
         ${need ? `<div class="sx warnt">키핑이 ${esc(tAt(s.stillIn))}에 방문했는데 아직 손님이 있습니다. 레이트·연장·퇴실완 중 하나로 답해 주십시오.</div>` : ""}
-        <div class="sa">${ro ? "" : `<label class="tg"><input type="checkbox" data-svc="pw" data-id="${esc(x.id)}" ${s.pwGiven ? "checked" : ""}> 비번 제공</label>
+        <div class="sa">${foA ? `<button type="button" class="btn sm main" data-svc="foack" data-id="${esc(x.id)}">입실 가능 확인</button>` : ""}${ro ? "" : `<label class="tg"><input type="checkbox" data-svc="pw" data-id="${esc(x.id)}" ${s.pwGiven ? "checked" : ""}> 비번 제공</label>
           ${s.co ? `<button type="button" class="btn sm" data-svc="unco" data-id="${esc(x.id)}" title="누르면 퇴실완 취소">퇴실완 ${esc(tAt(s.co))}</button>` : s.ext ? `<button type="button" class="btn sm" data-svc="unext" data-id="${esc(x.id)}">연장 취소</button>` : `<button type="button" class="btn sm main" data-svc="co" data-id="${esc(x.id)}">퇴실완</button>`}
           ${need ? "" : `<button type="button" class="btn sm" data-svc="edit" data-id="${esc(x.id)}">레이트·연장·우선</button>`}`}${ackLine(x)}</div>
         ${editing ? `<div class="sedit"><div class="acts" style="margin:0;flex-wrap:wrap">
@@ -1088,6 +1109,7 @@
       else if (act === "unco") doc = await S.undoCheckout(T, id, cur, a);
       else if (act === "pw") doc = await S.setPwGiven(T, id, cur, a, el.checked);
       else if (act === "ack") doc = await S.ack(T, id, cur, a);
+      else if (act === "foack") doc = await S.foAck(T, id, cur, a);
       else if (act === "done") doc = await S.done(T, id, cur, a, ($("ts-" + id) || {}).value, ($("tl-" + id) || {}).value);
       else if (act === "undone") doc = await S.undoDone(T, id, cur, a);
       else if (act === "stillin") doc = await S.stillIn(T, id, cur, a);
@@ -1237,7 +1259,7 @@
     const L = roomSpans(id), idx = st.stayIdx;
     const nights = x => OPS.Stays.dayN(x.co) - OPS.Stays.dayN(x.start);
     const line = (x, extra) => `<div class="span ${x.mark ? "mk" : ""}"><b>${esc(dLabel(x.start))}</b> 입실 → <b>${esc(dLabel(x.co))}</b> 퇴실 <span class="w" style="display:inline">${nights(x)}박${extra ? " · " + esc(extra) : ""}${x.src === "manual" ? " · 직접 추가" : ""}${x.mark ? " · 예약표 표기 칸(UHC·Miss 등)" : ""}${x.memo ? " · " + esc(x.memo) : ""}</span></div>`;
-    if (!idx && !L.length) return `<h4>투숙 기간</h4><p class="w">예약표를 반영하면 입실일~퇴실일이 나옵니다.</p>`;
+    if (!idx && !L.length) return `<p class="w stay0">투숙 기간 정보 없음 · 예약표를 반영하면 입실일~퇴실일이 나옵니다.</p>`;
     const t = OPS.Stays.dayN(date);
     const cur = L.find(x => OPS.Stays.dayN(x.start) <= t && t < OPS.Stays.dayN(x.co));
     const leaving = L.find(x => OPS.Stays.dayN(x.co) === t);
@@ -1262,6 +1284,8 @@
     const all = st.tasks.filter(t => OPS.Rooms.resolve(t, M) === id);
     const open = Core.sort(all.filter(t => Core.isOpen(t)));
     const need = open.filter(t => Core.needsAck(t, st.role));
+    const svx = demo ? null : svcRows().find(y => y.id === id);   // [web] 이 객실 오늘 청소
+    const foA = st.role === "FO" && svx && OPS.Svc.foNeedsAck(svx);
     const since = Date.now() - 864e5;
     const ids = new Set(all.map(t => t.id)), byId = new Map(all.map(t => [t.id, t]));
     const ev = st.events.filter(e => ids.has(e.taskId) && e.at >= since && e.action !== "확인").sort((a, b) => b.at - a.at).slice(0, 20);
@@ -1272,24 +1296,25 @@
       ${demo ? `<p class="demo">예시 객실입니다. 실제 객실을 등록하면 이 자리에 그 객실 정보가 나옵니다.</p>` : ""}
       <h3>${multiB() ? esc(r.building) + " " : ""}${esc(r.no)}호 <span class="meta" style="font-weight:400">${esc(r.type || "")}${r.dong ? " · " + esc(r.dong) + "동" : ""}</span></h3>
       <div class="rs">${s && s.stay ? `<span class="chip ${STAY_CLS[s.stay] || ""}">${esc(s.stay)}</span>` : ""}${s && s.clean ? `<span class="chip k">${esc(s.clean)}${s.cleanFromSheet ? "" : " 예상"}</span>` : ""}${s && s.flags && s.flags.length ? s.flags.map(f => `<span class="chip warn">${esc(f)}</span>`).join("") : ""}</div>
-      ${demo ? "" : `<div class="stayb">${staySection(id, st.rdate)}</div>`}
+      ${demo ? "" : (() => { const h = staySection(id, st.rdate); return `<div class="stayb ${h.includes("stay0") ? "empty" : ""}">${h}</div>`; })()}
       <div class="acts">
-        ${need.length ? `<button type="button" class="btn main" id="roomAck">${esc(OPS.deptName(st.role))} 확인 (${need.length}건)</button>` : ""}
+        ${need.length || foA ? `<button type="button" class="btn main" id="roomAck">${esc(OPS.deptName(st.role))} 확인 (${need.length + (foA ? 1 : 0)}건)</button>` : ""}
         ${!OPS.isMgr(st.role) && !demo ? `<button type="button" class="btn" id="roomNew">이 객실로 업무 등록</button>` : ""}
         ${(st.role === "FO" || OPS.isMgr(st.role)) && !demo ? `<button type="button" class="btn" id="roomAdd">이 객실 예약 추가</button>` : ""}
       </div>
-      ${(() => { const x = demo ? null : svcRows().find(y => y.id === id); if (!x) return ""; const s = x.s;
-        return `<h4>${esc(st.rdate.slice(5).replace("-", "/"))} 청소</h4><div class="rs">${chip(x)}${x.type === "stay" ? `<span class="chip k">${esc(x.kind)}</span>` : ""}${s.reply && s.reply.window ? `<span class="chip k">${esc(s.reply.window)}</span>` : ""}${s.pwGiven ? `<span class="chip warn">비번 제공</span>` : ""}${ackLine(x)}</div>${s.reply && (s.reply.items || s.reply.kinds) ? `<div class="w">요청: ${esc(OPS.Svc.reqText(x))}</div>` : ""}<button type="button" class="lnk" style="margin:4px 0 0" id="goSvc">청소·재실 탭에서 처리</button>`; })()}
+      ${(() => { const x = svx; if (!x) return ""; const s = x.s;
+        // [web] 상태 칩 줄과 처리 내용(누가·언제·읽음) 줄을 나눈다
+        return `<h4>${esc(st.rdate.slice(5).replace("-", "/"))} 청소</h4><div class="rs">${chip(x)}${x.type === "stay" ? `<span class="chip k">${esc(x.kind)}</span>` : ""}${s.reply && s.reply.window ? `<span class="chip k">${esc(s.reply.window)}</span>` : ""}${s.pwGiven ? `<span class="chip warn">비번 제공</span>` : ""}</div>${ackLine(x) ? `<div class="svcl">${ackLine(x)}</div>` : ""}${s.reply && (s.reply.items || s.reply.kinds) ? `<div class="svcl">요청: ${esc(OPS.Svc.reqText(x))}</div>` : ""}<button type="button" class="lnk" style="margin:4px 0 0" id="goSvc">청소·재실 탭에서 처리</button>`; })()}
       <h4>열린 이슈 <span class="c">${open.length}</span></h4>
-      ${open.length ? `<div class="list">${open.map(t => { const a = Core.actions(t, st.role)[0]; return `<div class="task ${t.priority === "긴급" ? "hot" : ""}" tabindex="0" data-open="${esc(t.id)}"><span class="room">${Core.needsAck(t, st.role) ? "●" : ""}</span><span class="t"><span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${esc(t.title)}</span>${a ? `<button type="button" class="btn go" data-act="${esc(a.to)}" data-id="${esc(t.id)}">${esc(a.label)}</button>` : ""}<span class="meta">${esc(OPS.kindName(t.kind))} · ${esc(OPS.deptName(t.fromDept))} → ${esc(OPS.deptName(t.toDept))} · ${esc(t.status)} · ${esc(ago(t.createdAt))}${Core.isOverdue(t) ? ` · <span class="late">기한 초과</span>` : ""}</span></div>`; }).join("")}</div>` : `<div class="w">열린 이슈가 없습니다.</div>`}
-      <h4>인수인계 정리 <span class="sub" style="font-weight:400">최근 24시간</span></h4>
-      ${ev.length ? `<ol class="tl">${ev.map(e => { const t = byId.get(e.taskId); return `<li><b>${esc(e.action)}</b> ${esc(t ? t.title : "")}${e.to && e.action !== "댓글" ? ` <span class="w" style="display:inline">${esc(e.from ? e.from + " → " : "")}${esc(e.to)}</span>` : ""}${e.note ? `<br>${esc(e.note)}` : ""}<br><span class="w">${esc(whoLine(e))}</span></li>`; }).join("")}</ol>` : `<div class="w">최근 24시간 동안 이 객실의 처리 기록이 없습니다.</div>`}
+      ${open.length ? `<div class="list">${open.map(t => { const a = Core.actions(t, st.role)[0], nd = Core.needsAck(t, st.role), rc = readChip(t, st.events); return `<div class="task ${t.priority === "긴급" ? "hot" : ""} ${nd ? "need" : ""}" tabindex="0" data-open="${esc(t.id)}"><span class="t">${nd ? `<span class="unread">확인 필요</span> ` : ""}<span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${esc(t.title)}</span>${a ? `<button type="button" class="btn go" data-act="${esc(a.to)}" data-id="${esc(t.id)}">${esc(a.label)}</button>` : ""}<span class="meta">${esc(OPS.kindName(t.kind))} · ${esc(OPS.deptName(t.fromDept))} → ${esc(OPS.deptName(t.toDept))} · ${esc(t.status)} · ${esc(ago(t.createdAt))}${Core.isOverdue(t) ? ` · <span class="late">기한 초과</span>` : ""}${rc ? " · " + rc : ""}</span></div>`; }).join("")}</div>` : `<div class="w">열린 이슈가 없습니다.</div>`}
       <h4>부서별 비고</h4>
-      <p class="sub">세 부서 모두 볼 수 있고, 각 부서는 자기 칸만 고칠 수 있습니다. 카드번호·비밀번호는 자동으로 가려집니다. 투숙객 이름·연락처는 적지 마십시오.</p>
       <div class="notes">${NOTE_DEPTS.map(d => { const x = n[d] || {}; const editing = st.noteEdit === d && canEdit(d);
         return `<div class="note ${canEdit(d) ? "mine" : ""}"><div class="nh"><b>${esc(OPS.deptName(d))}</b>${x.at ? `<span class="w" style="display:inline"> · ${esc(whoLine(Object.assign({ role: d }, x)))}</span>` : ""}${canEdit(d) && !editing ? `<button type="button" class="lnk" data-note-edit="${d}">${x.text ? "수정" : "쓰기"}</button>` : ""}</div>
         ${editing ? `<form id="noteForm" data-dept="${d}"><textarea id="noteTxt" maxlength="1000" rows="4">${esc(keepTxt != null ? keepTxt : x.text || "")}</textarea><div class="acts" style="margin:6px 0 0"><button class="btn main" type="submit">저장</button><button type="button" class="btn" data-note-cancel="1">취소</button></div></form>`
-          : `<div class="nt">${x.text ? esc(x.text) : `<span class="w">비어 있음</span>`}</div>`}</div>`; }).join("")}</div>`;
+          : `<div class="nt">${x.text ? esc(x.text) : `<span class="w">비어 있음</span>`}</div>`}</div>`; }).join("")}</div>
+      <p class="sub nguide">세 부서 모두 볼 수 있고, 각 부서는 자기 칸만 고칠 수 있습니다. 카드번호·비밀번호는 자동으로 가려집니다. 투숙객 이름·연락처는 적지 마십시오.</p>
+      <h4>인수인계 정리 <span class="sub" style="font-weight:400">최근 24시간</span></h4>
+      ${ev.length ? `<ol class="tl">${ev.map(e => { const t = byId.get(e.taskId); return `<li><b>${esc(e.action)}</b> ${esc(t ? t.title : "")}${e.to && e.action !== "댓글" ? ` <span class="w" style="display:inline">${esc(e.from ? e.from + " → " : "")}${esc(e.to)}</span>` : ""}${e.note ? `<br>${esc(e.note)}` : ""}<br><span class="w">${esc(whoLine(e))}</span></li>`; }).join("")}</ol>` : `<div class="w">최근 24시간 동안 이 객실의 처리 기록이 없습니다.</div>`}`;
     if (!$("dlg").open) $("dlg").showModal();
     if (st.noteEdit && $("noteTxt") && !refresh) $("noteTxt").focus();
   }
@@ -1543,7 +1568,7 @@
     if (Core.needsAck(t, st.role)) Core.ack(t, actor()).catch(() => {});
     $("dlgBody").innerHTML = `<button type="button" class="x" id="dlgX" aria-label="닫기">×</button>${st.backRoom ? `<button type="button" class="lnk" id="backRoom">← 객실로</button>` : ""}
       <h3><span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${t.room ? (bTag(t) ? esc(bTag(t)) + " " : "") + esc(t.room) + " · " : ""}${esc(t.title)}</h3>
-      <div class="meta">${esc(OPS.kindName(t.kind))}${t.category ? " · " + esc(t.category) : ""} · ${esc(OPS.deptName(t.fromDept))} → ${esc(OPS.deptName(t.toDept))} · <b>${esc(t.status)}</b> · 등록 ${esc(whoLine({ uid: t.createdUid, by: t.createdBy, role: t.createdRole || t.fromDept, at: t.createdAt }))}${t.doneAt ? " · 완료 " + esc(hm(t.doneAt)) : ""}</div>
+      <div class="meta">${esc(OPS.kindName(t.kind))}${t.category ? " · " + esc(t.category) : ""} · ${esc(OPS.deptName(t.fromDept))} → ${esc(OPS.deptName(t.toDept))} · <b>${esc(t.status)}</b> · 등록 ${esc(whoLine({ uid: t.createdUid, by: t.createdBy, role: t.createdRole || t.fromDept, at: t.createdAt }))}${t.doneAt ? " · 완료 " + esc(hm(t.doneAt)) : ""}${readChip(t, st.events) ? " · " + readChip(t, st.events) : ""}</div>
       ${t.detail ? `<div class="detail">${esc(t.detail)}</div>` : ""}
       <div class="acts">${acts.map((a, i) => `<button type="button" class="btn ${i === 0 ? "main" : ""}" data-act="${esc(a.to)}" data-id="${esc(t.id)}">${esc(a.label)}</button>`).join("") || `<span class="sub">${esc(OPS.deptName(st.role))} 역할에서 할 수 있는 동작이 없습니다.</span>`}</div>
       <form class="cmt" id="cmtForm"><input id="cmtText" placeholder="댓글·조치 내용" maxlength="1000" aria-label="댓글"><button class="btn" type="submit">남기기</button></form>
@@ -1640,7 +1665,8 @@
     if (e.target.id === "roomAck") {
       const M = boardM(), id = st.openRoomId;
       const list = st.tasks.filter(t => OPS.Rooms.resolve(t, M) === id && Core.needsAck(t, st.role));
-      (async () => { for (const t of list) { try { await Core.ack(t, actor()); } catch (err) { flash(err.message); } } })();
+      const sx = st.role === "FO" ? svcRows().find(y => y.id === id) : null;   // [web] 입실 가능도 같이 읽음
+      (async () => { if (sx && OPS.Svc.foNeedsAck(sx)) await svcAct("foack", id); for (const t of list) { try { await Core.ack(t, actor()); } catch (err) { flash(err.message); } } })();
       return;
     }
     if (e.target.id === "roomNew") {

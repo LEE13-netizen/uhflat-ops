@@ -63,6 +63,14 @@
     return false;
   }
 
+  // [web] 프론트가 아직 안 읽은 "입실 가능"(키핑 점검 완료). 기능을 넣기 전(2026-11-26 15:00)에 끝난 객실은 읽은 것으로 본다
+  const FOACK_FROM = 1795672800000;
+  function foNeedsAck(row) {
+    const s = row.s || {};
+    if (row.type !== "out" || !s.done || s.ext || !s.done.at || s.done.at < FOACK_FROM) return false;
+    return !(s.foAck && s.foAck.at >= s.done.at);
+  }
+
   function hkTodo(row) {
     const s = row.s || {};
     if (s.done) return false;
@@ -130,7 +138,7 @@
   const by = (actor, extra) => Object.assign({ at: Date.now(), by: actor.name || "", uid: actor.uid || "", role: actor.role }, extra || {});
 
   OPS.Svc = {
-    sid, rows, status, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, hkTodo, hkSort, summary, windowStart, stayWork,
+    sid, rows, status, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, foNeedsAck, hkTodo, hkSort, summary, windowStart, stayWork,
     send: (date, id, cur, actor, via) => write(date, id, cur, { sent: by(actor, { via: clean(via, 12) }) }, actor, "재실 안내 발송"),
     unsend: (date, id, cur, actor) => write(date, id, cur, { sent: null }, actor, "발송 취소"),
     replyTime: (date, id, cur, actor, window, items) => {
@@ -177,6 +185,7 @@
     setPwGiven: (date, id, cur, actor, on) => write(date, id, cur, { pwGiven: !!on }, actor, on ? "비번 제공 표시" : "비번 제공 해제"),
     setMemo: (date, id, cur, actor, text) => write(date, id, cur, { memo: text ? by(actor, { text: clean(text, 300) }) : null }, actor, "추가 내용"),
     ack: (date, id, cur, actor) => write(date, id, cur, { hkAck: by(actor) }, actor, "키핑 확인"),
+    foAck: (date, id, cur, actor) => write(date, id, cur, { foAck: by(actor) }, actor, "프론트 확인(입실 가능)"),
     done: (date, id, cur, actor, small, large) => {
       const n = v => Math.max(0, Math.min(20, parseInt(v, 10) || 0));
       return write(date, id, cur, { done: by(actor, { small: n(small), large: n(large) }), hkAck: (cur && cur.hkAck) || by(actor) }, actor, "청소 완료" + (n(small) || n(large) ? ` (작${n(small)} 큰${n(large)})` : ""));

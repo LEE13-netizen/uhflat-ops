@@ -11,13 +11,36 @@ function ReadText($p) { [IO.File]::ReadAllText($p, $utf8) }
 function WriteText($p, $t) { [IO.File]::WriteAllText($p, $t, $utf8) }
 if (-not (Test-Path "$From\index.html") -or -not (Test-Path "$From\js\app.js")) { throw "$From 에 index.html 과 js\app.js 가 있어야 합니다." }
 
-# 1) 아티팩트 js 파일 복사(없는 파일은 기존 것 유지)
+# 1) 아티팩트 js 파일 합치기(없는 파일은 기존 것 유지)
+#  tools\artifact-base\js = 지난번에 옮긴 아티팩트 원본. 웹판에서 js\ 를 직접 고친 부분(읽음 표시 등)은
+#  "지난 원본 → 새 원본" 바뀐 점만 웹판 파일에 얹는 3-way 합치기(git merge-file)로 살린다.
+#  같은 줄을 양쪽이 고쳤으면 아무것도 바꾸지 않고 멈춘다(겹친 곳은 임시 폴더의 .conflict 파일).
 $js = Join-Path $root "js"
-Get-ChildItem "$From\js" -Filter *.js | ForEach-Object { Copy-Item $_.FullName (Join-Path $js $_.Name) -Force }
+$base = Join-Path $root "tools\artifact-base"
+$git = $null; $gc = Get-Command git -ErrorAction SilentlyContinue; if ($gc) { $git = $gc.Source }
+if (-not $git) { $g = "$env:LOCALAPPDATA\Programs\ops-tools\git\cmd\git.exe"; if (Test-Path $g) { $git = $g } }
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ("ops-port-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+New-Item -ItemType Directory $tmp | Out-Null
+$conf = @(); $mergedApp = $false; $outs = @()
+foreach ($f in Get-ChildItem "$From\js" -Filter *.js) {
+  $mine = Join-Path $js $f.Name; $old = Join-Path $base ("js\" + $f.Name); $out = Join-Path $tmp $f.Name
+  if ($git -and (Test-Path $mine) -and (Test-Path $old)) {
+    Copy-Item $mine $out
+    $ErrorActionPreference = "Continue"
+    & $git merge-file -L web -L artifact-old -L artifact-new $out $old $f.FullName
+    $code = $LASTEXITCODE; $ErrorActionPreference = "Stop"
+    if ($code -ne 0) { Copy-Item $out ($out + ".conflict"); $conf += "$($f.Name) (겹친 곳 $code)" }
+    if ($f.Name -eq "app.js") { $mergedApp = $true }
+  } else { Copy-Item $f.FullName $out }
+  $outs += $f.Name
+}
+if ($conf.Count) { throw "아티팩트 변경과 웹판 수정이 같은 곳에서 겹칩니다: $($conf -join ', '). 웹판은 그대로 두었습니다. 겹친 내용: $tmp" }
+foreach ($n in $outs) { Copy-Item (Join-Path $tmp $n) (Join-Path $js $n) -Force }
 
-# 2) app.js 웹 수정
+# 2) app.js 웹 수정: 합치기를 못 한 경우(지난 원본 없음)에만 기준 문장으로 덧입힌다
 $app = Join-Path $js "app.js"
 $t = ReadText $app
+if (-not $mergedApp) {
 $patches = @(
   @{ name = "시작 부서 고정";
      from = '  if (!OPS.DEPTS.some(d => d.id === st.role)) st.role = "FO";';
@@ -62,6 +85,12 @@ foreach ($p in $patches) {
 }
 foreach ($p in $optional) { if ($t.Contains($p.from)) { $t = $t.Replace($p.from, $p.to) } else { Write-Warning "선택 수정 건너뜀: $($p.name)" } }
 WriteText $app $t
+}
+# 다음 합치기의 기준: 이번 아티팩트 원본
+New-Item -ItemType Directory -Force (Join-Path $base "js") | Out-Null
+Get-ChildItem "$From\js" -Filter *.js | ForEach-Object { Copy-Item $_.FullName (Join-Path $base ("js\" + $_.Name)) -Force }
+Copy-Item "$From\index.html" (Join-Path $base "index.html") -Force
+Remove-Item -Recurse -Force $tmp
 
 # 3) index.html: 아티팩트 화면 틀 + 웹 로그인
 $h = ReadText "$From\index.html"

@@ -386,3 +386,4 @@ ol.steps.mini{max-width:560px}
 .fb-ctx{margin:0 0 6px;overflow-wrap:anywhere}
 .fb-reply{margin:6px 0 0;padding:8px 12px;border-radius:10px;background:var(--bg);font-size:14.5px}
 .fb-rep .fb-grow{flex:1 1 280px}.fb-rep .fb-grow input{width:100%;box-sizing:border-box}
+.svn.force{background:var(--warn-bg);color:var(--warn);border-color:transparent}

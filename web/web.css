@@ -332,3 +332,5 @@ ol.steps.mini li.now i{transform:none}
 ol.steps.mini li:not(:last-child)::after{top:9px;left:calc(50% + 11px);right:calc(-50% + 11px)}
 @media(max-width:600px){ol.steps.mini li span{font-size:10px;letter-spacing:-.3px}}
 ol.steps.mini{max-width:560px}
+.kd.force{background:var(--warn-bg);color:var(--warn);border:1.5px solid var(--warn)}
+.stale{margin:4px 0 8px;padding:8px 12px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-weight:600;font-size:14px}

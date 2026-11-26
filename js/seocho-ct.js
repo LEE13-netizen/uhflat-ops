@@ -477,7 +477,8 @@ anchor = tg;
 row.fromTag = tg;
 }
 }
-const base = d % 3 === 2;
+const CY = (typeof OPS !== "undefined" && OPS.CTX && +OPS.CTX.stayCycle) || 3;   // [web] 전체 청소 주기(설정, 기본 3일)
+const base = d % CY === CY - 1;
 const lastTxt = txtKey(last.txt);
 if (lastTxt === "UHC") {
 row.kind = "전체재실";
@@ -488,10 +489,10 @@ row.carry = lastF;
 row.info = [ `전체재실 이월 — ${lastF.slice(5)} 정비 안 됨` ];
 } else if (anchor) {
 const da = diff(anchor, T);
-const byAnchor = da % 3 === 0;
+const byAnchor = da % CY === 0;
 row.kind = byAnchor ? "전체재실" : "재실청소";
 const ad = diff(ci, anchor);
-if (ad % 3 !== 2) {
+if (ad % CY !== CY - 1) {
 row.flags.push(`사이클 변경 — ${anchor.slice(5)} 전체재실 기준(원래 주기면 ${base ? "전체재실" : "재실청소"})`);
 row.anchor = anchor;
 }
@@ -504,7 +505,7 @@ let due = null;
 for (let k = 1; k <= Math.min(d - 1, 31); k++) {
 const dd = addDays(T, -k);
 if (dd <= ci) break;
-const isDue = a0 ? diff(a0, dd) % 3 === 0 && dd > a0 : diff(ci, dd) % 3 === 2;
+const isDue = a0 ? diff(a0, dd) % CY === 0 && dd > a0 : diff(ci, dd) % CY === CY - 1;
 if (isDue) {
 due = dd;
 break;

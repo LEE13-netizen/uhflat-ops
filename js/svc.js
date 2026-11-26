@@ -81,7 +81,13 @@
   function hkTodo(row) {
     const s = row.s || {};
     if (s.done) return false;
-    return row.type === "out" ? !!s.co && !s.ext : stayWork(s);
+    return row.type === "out" ? !!s.co && !s.ext : stayWork(s) || forceDue(row);
+  }
+  // [web] 장기 투숙 점검: 체크인 후 N일째마다(설정, 기본 7일) 요청이 없어도 전체 청소. 손님이 청소를 거절했으면 제외
+  function forceDue(row) {
+    const s = row.s || {}, n = +(OPS.CTX && OPS.CTX.forceDays) || 7;
+    if (row.type !== "stay" || s.done || !(row.day >= n) || row.day % n !== 0) return false;
+    return !(s.reply && s.reply.type === "refuse" && !s.reply.items);
   }
 
   // 재실 요청 종류. "정비"는 청소표에 적힌 종류(재실청소·전체재실)로 보인다
@@ -113,7 +119,12 @@
       const r = M.rooms[id];
       const s = (svcMap && svcMap[id]) || {};
       if (st.stay === "퇴실" || st.stay === "퇴실·입실") out.push({ id, r, type: "out", kind: "객실청소", sameDayIn: st.stay === "퇴실·입실" || !!st.sameDayIn, s });
-      else if (STAY_KINDS.has(st.clean) || st.stay === "연박") out.push({ id, r, type: "stay", kind: STAY_KINDS.has(st.clean) ? st.clean : "재실청소", s });
+      else if (STAY_KINDS.has(st.clean) || st.stay === "연박") {
+        // [web] 직접 바꾼 종류가 있으면 그것, 점검일이면 전체 청소
+        const n = +(OPS.CTX && OPS.CTX.forceDays) || 7, force = typeof st.day === "number" && st.day >= n && st.day % n === 0;
+        const kind = s.kindSet && s.kindSet.kind ? s.kindSet.kind : force ? "전체재실" : STAY_KINDS.has(st.clean) ? st.clean : "재실청소";
+        out.push({ id, r, type: "stay", kind, day: st.day, force, s });
+      }
     });
     return out;
   }
@@ -145,7 +156,7 @@
   const by = (actor, extra) => Object.assign({ at: Date.now(), by: actor.name || "", uid: actor.uid || "", role: actor.role }, extra || {});
 
   OPS.Svc = {
-    sid, rows, status, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, foNeedsAck, foCoNeedsAck, hkTodo, hkSort, summary, windowStart, stayWork,
+    sid, rows, status, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, foNeedsAck, foCoNeedsAck, hkTodo, forceDue, hkSort, summary, windowStart, stayWork,
     send: (date, id, cur, actor, via) => write(date, id, cur, { sent: by(actor, { via: clean(via, 12) }) }, actor, "재실 안내 발송"),
     unsend: (date, id, cur, actor) => write(date, id, cur, { sent: null }, actor, "발송 취소"),
     replyTime: (date, id, cur, actor, window, items) => {
@@ -186,6 +197,8 @@
     },
     foCoAck: (date, id, cur, actor) => write(date, id, cur, { foCoAck: by(actor) }, actor, "프론트 확인(키핑 퇴실 확인)"),
     // 키핑: 청소하러 갔는데 아직 손님이 있음 → 프론트가 레이트·연장·퇴실 완료로 답한다
+    // [web] 재실 청소 종류를 직접 바꾸기(객실 이동·손님 사정). 누가 바꿨는지 남는다
+    setKind: (date, id, cur, actor, kind) => write(date, id, cur, { kindSet: kind ? by(actor, { kind }) : null }, actor, kind ? "청소 종류 → " + (kind === "전체재실" ? "전체 청소" : "일반 청소") : "청소 종류 자동으로"),
     stillIn: (date, id, cur, actor) => write(date, id, cur, { stillIn: by(actor) }, actor, "손님 아직 있음"),
     late: (date, id, cur, actor, time) => {
       if (!/^\d{1,2}:\d{2}$/.test(time || "")) throw new Error("레이트 체크아웃 시각을 골라 주십시오.");

@@ -605,7 +605,7 @@
         for (let i = 0; i < 2; i++) {   // 당일 기준 + 내일(예정)
           const T = OPS.Rooms.addDays(today, i);
           const prev = st.days[T] || {};
-          const doc = Object.assign({}, prev, { date: T, rooms: OPS.Rooms.dayFrom(resv.stays, T, lm, bm), src: Object.assign({}, prev.src || {}, { reservation: { file: resv.fileName, at: now } }) });
+          const doc = Object.assign({}, prev, { date: T, rooms: OPS.Rooms.dayFrom(resv.stays, T, lm, bm, cleanHistory(cl, bm)), src: Object.assign({}, prev.src || {}, { reservation: { file: resv.fileName, at: now } }) });
           delete doc.id;
           await Store.set(COL.roomDays, T, doc);
           st.days[T] = doc;
@@ -990,12 +990,27 @@
     return `<section class="card rdy"><h2>입실 준비 <span class="sub" style="margin:0;font-weight:500">${esc(st.rdate.slice(5).replace("-", "/"))}${st.rdate === OPS.ymd(Date.now()) ? " 오늘" : " 예정"}</span></h2>${readyBar(K.rc, K.arr, K.fresh)}</section>`;
   }
 
+  // [web] 과거 청소표 이력: { 날짜: { main|annex: { 호수: 청소 종류 } } }. 전체 청소 날짜의 기준점이 된다(처음엔 지난 청소표를 올려서 맞춘다)
+  function cleanHistory(cl, bm) {
+    const h = {}, src = b => (bm.main === b ? "main" : bm.annex === b ? "annex" : b);
+    const put = (date, kinds) => Object.entries(kinds || {}).forEach(([id, k]) => { const i = id.indexOf("-"); if (i < 0 || !date) return; const sk = src(id.slice(0, i)); ((h[date] = h[date] || {})[sk] = h[date][sk] || {})[id.slice(i + 1)] = k; });
+    Object.values(st.days || {}).forEach(d => { if (d && d.cleanSheet) put(d.date || d.id, d.cleanSheet); });
+    (cl || []).forEach(c => put(c.date, c.kinds));
+    return h;
+  }
+  // [web] 예약표가 오래되면 경고(연장·조기 퇴실·객실 이동이 빠질 수 있다)
+  function staleLine() {
+    const M = st.master, at = M && M.src && M.src.reservation && M.src.reservation.at;
+    if (!at) return "";
+    const h = Math.floor((Date.now() - at) / 3600e3);
+    return h >= 6 ? `<p class="stale">예약표가 ${h}시간 전 것입니다(${esc(hm(at))}). 연장·조기 퇴실·객실 이동이 빠졌을 수 있으니 최신 예약표를 다시 올려 주십시오(권장: 10시·14시).</p>` : "";
+  }
   // 객실 목록은 그대로 두고, 그날 상태(퇴실·입실·연박)만 예약표·청소표로 덧입힌다
   function dayNote() {
     const d = dayDoc(st.rdate);
     if (d && (d.rooms || d.cleanSheet)) {
       const src = d.src || {};
-      return `<p class="sub" style="margin:0 0 6px">${esc(st.rdate.slice(5).replace("-", "/"))} 상태: ${[src.reservation ? "예약표 " + hm(src.reservation.at) : "", src.clean ? "청소표 " + hm(src.clean.at) : "", manualOn(st.rdate) ? "직접 추가 예약" : ""].filter(Boolean).map(esc).join(" · ")} 반영</p>`;
+      return staleLine() + `<p class="sub" style="margin:0 0 6px">${esc(st.rdate.slice(5).replace("-", "/"))} 상태: ${[src.reservation ? "예약표 " + hm(src.reservation.at) : "", src.clean ? "청소표 " + hm(src.clean.at) : "", manualOn(st.rdate) ? "직접 추가 예약" : ""].filter(Boolean).map(esc).join(" · ")} 반영</p>`;
     }
     const last = Object.keys(st.days).filter(k => st.days[k] && (st.days[k].rooms || st.days[k].cleanSheet)).sort().pop();
     return `<p class="sub" style="margin:0 0 6px">${esc(st.rdate.slice(5).replace("-", "/"))} 숙박 상태가 아직 없습니다. 객실판은 그대로 쓰고, 예약표를 올리면 퇴실·입실·연박이 표시됩니다${last ? ` (마지막 반영 ${esc(last.slice(5).replace("-", "/"))})` : ""}.</p>`;
@@ -1015,6 +1030,7 @@
   const SVC_CLS = { "입실 가능": "ok", "점검 대기": "go", "청소 중": "go", "손님 아직 있음": "warn", "연장·청소 없음": "off", "완료": "ok", "시간 확정": "go", "쓰레기·수건만": "go", "퇴실 완료·청소 대기": "go", "회신 대기": "wait", "발송 전": "wait", "요청 없음": "wait", "퇴실 전": "wait", "청소 없음": "off", "무응답·청소 없음": "off" };
   const rLabel = r => { const ns = nsOf(OPS.Rooms.roomId(r.b, r.no)); return (multiB() ? (r.building || "") + " " : "") + r.no + (ns ? " · " + ns : ""); };   // [web] 비판매 객실은 이유를 붙인다
   // [web] 재실 청소 종류: 전체재실(체크인 기준 3박째마다·마지막 전체재실 기준, 빠지면 이월) / 재실청소(그 사이 날 간단 정비)
+  const forceChip = x => (x && x.force ? `<span class="kd force" title="장기 투숙 점검: 요청이 없어도 전체 청소">${esc(String(x.day))}일 점검</span>` : "") + (x && x.s && x.s.kindSet ? `<span class="kd lite" title="${esc(whoLine(x.s.kindSet))}">직접 지정</span>` : "");
   const kindChip = k => k === "전체재실" ? `<span class="kd full" title="침구·욕실·바닥까지 전체">전체 청소</span>` : k === "재실청소" ? `<span class="kd lite" title="쓰레기·수건·정리">일반 청소</span>` : esc(kindName(k));
 
   const tAt = o => (o && o.at ? hm(o.at).split(" ")[1] : "");
@@ -1035,8 +1051,8 @@
         ${multiB() ? `<div class="chips bldc">${M.buildings.map(b => { const n = svcRows().filter(x => x.r.b === b.id).length; return `<button type="button" data-svcb="${esc(b.id)}" aria-pressed="${b.id === st.svcB}">${esc(b.name)}${n ? ` <b>${n}</b>` : ""}</button>`; }).join("")}</div>` : ""}</div>
       ${multiB() ? `<p class="bldnow">${esc((M.buildings.find(b => b.id === st.svcB) || {}).name || "")} 목록입니다. ${esc(M.buildings.filter(b => b.id !== st.svcB).map(b => b.name).join("·"))}은(는) 위에서 바꿔 보십시오.</p>` : ""}
       ${d ? `<div class="sums" style="margin:0"><span class="sum">재실 <b>${sm.stay}</b></span><span class="sum stay">청소 요청 <b>${sm.time}</b></span><span class="sum">청소 X <b>${sm.refuse}</b></span><span class="sum free">요청 없음 <b>${sm.wait + sm.none}</b></span><span class="sum out">퇴실 <b>${sm.out}</b> (퇴실 완료 ${sm.co})</span><span class="sum in">완료 <b>${sm.done}</b></span>${sm.ack ? `<span class="needbtn" style="padding:2px 10px">키핑 미확인 <b>${sm.ack}</b></span>` : ""}</div>` : ""}
-      ${d ? houseLine() : ""}
-      <p class="sub" style="margin:8px 0 0">재실 객실: <span class="kd full">전체 청소</span> = 체크인 기준 3박째마다(마지막 전체 청소 날 기준, 못 하면 다음 날로 이월) · <span class="kd lite">일반 청소</span> = 그 사이 날 쓰레기·수건·정리. 청소표를 올리면 청소표 값이 우선입니다.<br>재실: 요청 시간대(시작~끝)·청소 종류 입력 → 키핑 확인 → 완료. 요청이 없으면 청소하지 않습니다. 퇴실: 퇴실 완료 → 키핑 확인 → 완료. 비밀번호를 제공한 객실은 퇴실 완료 때 비번 변경 업무가 생깁니다.</p>
+      ${d ? houseLine() : ""}${staleLine()}
+      <p class="sub" style="margin:8px 0 0">재실 객실: <span class="kd full">전체 청소</span> = 체크인 후 ${(+OPS.CTX.stayCycle || 3) - 1}박 지난 날부터 ${+OPS.CTX.stayCycle || 3}일마다(지난 청소표의 마지막 전체 청소 날 기준, 못 하면 다음 날로 이월) · <span class="kd force">${+OPS.CTX.forceDays || 7}일 점검</span> = 요청이 없어도 ${+OPS.CTX.forceDays || 7}일째마다 전체 청소 · <span class="kd lite">일반 청소</span> = 그 사이 날 쓰레기·수건·정리. 청소표를 올리면 청소표 값이 우선입니다.<br>재실: 요청 시간대(시작~끝)·청소 종류 입력 → 키핑 확인 → 완료. 요청이 없으면 청소하지 않습니다. 퇴실: 퇴실 완료 → 키핑 확인 → 완료. 비밀번호를 제공한 객실은 퇴실 완료 때 비번 변경 업무가 생깁니다.</p>
     </section>`;
     const tools = (st.role === "FO" || OPS.isMgr(st.role)) ? frontTools(M) : "";
     if (!d) return head + tools + `<div class="empty">${esc(st.rdate)} 객실 상태가 없습니다. 예약표를 반영하거나 예약을 직접 추가하면 재실·퇴실 목록이 생깁니다.</div>`;
@@ -1260,7 +1276,7 @@
       const s = x.s, editing = st.svcEdit === x.id && !ro, r = s.reply || {}, rt = OPS.Svc.reqText(x);
       const sel = r.kinds || (s.reply ? [] : ["정비"]);
       return `<div class="srow ${OPS.Svc.hkNeedsAck(x) ? "pend" : ""}">
-        <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${kindChip(x.kind)}${chip(x)}${r.window ? `<span class="chip k">${esc(r.window)}</span>` : ""}${rt ? `<span class="w" style="display:inline">${esc(rt)}</span>` : ""}</div>
+        <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${kindChip(x.kind)}${forceChip(x)}${chip(x)}${r.window ? `<span class="chip k">${esc(r.window)}</span>` : ""}${rt ? `<span class="w" style="display:inline">${esc(rt)}</span>` : ""}</div>
         <div class="sa">${stageMenuBtn(x, ro)}${ro ? "" : `<button type="button" class="btn sm ${s.reply ? "" : "main"}" data-svc="edit" data-id="${esc(x.id)}">${s.reply ? "요청 수정" : "요청 입력"}</button>`}${s.reply ? `<span class="w">${esc(whoLine(s.reply, { short: true }))}</span>` : ""}${ackLine(x)}</div>
         ${editing ? `<div class="sedit req">
           <div class="acts" style="margin:0"><label class="tw">시작<input type="time" id="rf-${esc(x.id)}" value="${esc(r.from || "")}" step="1800"></label><span aria-hidden="true">~</span><label class="tw">끝<input type="time" id="rt-${esc(x.id)}" value="${esc(r.to || "")}" step="1800"></label></div>
@@ -1309,7 +1325,7 @@
     const n = [0, 1, 2, 3, 4, 5, 6, 8], byNo = (a, b) => (+a.r.no - +b.r.no);
     const row = x => {
       const s = x.s, need = OPS.Svc.hkNeedsAck(x);
-      const what = x.type === "out" ? `퇴실 ${esc(tAt(s.co))}${s.prio ? ` · <b class="warnt">${esc(s.prio.time)} 입실 우선</b>` : x.sameDayIn ? ` · <b class="warnt">당일 입실</b>` : ""}${s.cleaned ? ` · 청소 끝 ${esc(tAt(s.cleaned))}` : s.start ? ` · 청소 중` : ""}` : s.reply.type === "time" ? `<b>${esc(s.reply.window)}</b> · ${s.reply.kinds ? esc(OPS.Svc.reqText(x)) : kindChip(x.kind)}` : "청소 X · 요청만";
+      const what = x.type === "out" ? `퇴실 ${esc(tAt(s.co))}${s.prio ? ` · <b class="warnt">${esc(s.prio.time)} 입실 우선</b>` : x.sameDayIn ? ` · <b class="warnt">당일 입실</b>` : ""}${s.cleaned ? ` · 청소 끝 ${esc(tAt(s.cleaned))}` : s.start ? ` · 청소 중` : ""}` : !s.reply ? `${kindChip(x.kind)} · <b class="warnt">${esc(String(x.day))}일째 점검(요청 없음, 프론트와 시간 맞추기)</b>` : s.reply.type === "time" ? `<b>${esc(s.reply.window)}</b> · ${s.reply.kinds ? esc(OPS.Svc.reqText(x)) : kindChip(x.kind)}` : "청소 X · 요청만";
       const stageBtn = x.type !== "out" || need ? "" : !s.start ? `<button type="button" class="btn sm main" data-svc="start" data-id="${esc(x.id)}">청소 시작</button>` : !s.cleaned ? `<button type="button" class="btn sm main" data-svc="cleaned" data-id="${esc(x.id)}">청소 끝 → 점검 대기</button>` : "";
       return `<div class="srow ${need ? "pend blinkrow" : ""}">
         <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b><span>${what}</span></div>${miniSteps(x)}
@@ -1366,6 +1382,7 @@
       else if (act === "done") doc = await S.done(T, id, cur, a, ($("ts-" + id) || {}).value, ($("tl-" + id) || {}).value);
       else if (act === "undone") doc = await S.undoDone(T, id, cur, a);
       else if (act === "stillin") doc = await S.stillIn(T, id, cur, a);
+      else if (act === "kindfull" || act === "kindlite" || act === "kindauto") doc = await S.setKind(T, id, cur, a, act === "kindfull" ? "전체재실" : act === "kindlite" ? "재실청소" : "");
       else if (act === "late") { doc = await S.late(T, id, cur, a, $("lt-" + id).value); st.svcEdit = null; }
       else if (act === "ext") { doc = await S.ext(T, id, cur, a, true); st.svcEdit = null; }
       else if (act === "unext") doc = await S.ext(T, id, cur, a, false);
@@ -1393,6 +1410,7 @@
     }
     if (s.done) return { k: "ok", t: "청소 완료" };
     if (OPS.Svc.stayWork(s)) return { k: "wait", t: s.reply.type === "time" ? "청소 대기" : "요청만" };
+    if (OPS.Svc.forceDue(x)) return { k: "wait", t: x.day + "일 점검" };   // [web] 장기 투숙 점검(요청 없어도 전체 청소)
     if (!s.reply) return { k: "pre", t: "요청 전" };   // [web] 아직 손님 요청을 안 받은 재실(청소 안 함과 구분)
     return { k: "x", t: "청소 X" };
   }
@@ -1908,7 +1926,7 @@
     $("dlgBody").innerHTML = `<button type="button" class="x" id="dlgX" aria-label="닫기">×</button>
       ${demo ? `<p class="demo">예시 객실입니다. 실제 객실을 등록하면 이 자리에 그 객실 정보가 나옵니다.</p>` : ""}
       <h3>${multiB() ? esc(r.building) + " " : ""}${esc(r.no)}호 <span class="meta" style="font-weight:400">${esc(r.type || "")}${r.dong ? " · " + esc(r.dong) + "동" : ""}</span></h3>
-      <div class="rs">${s && s.stay ? `<span class="chip ${STAY_CLS[s.stay] || ""}">${esc(stayName(s.stay))}</span>` : ""}${s && s.clean ? `<span class="chip k">${esc(kindName(s.clean))}${s.cleanFromSheet ? "" : " 예상"}</span>` : ""}${s && s.flags && s.flags.length ? s.flags.map(f => `<span class="chip warn">${esc(f)}</span>`).join("") : ""}</div>
+      <div class="rs">${s && s.stay ? `<span class="chip ${STAY_CLS[s.stay] || ""}">${esc(stayName(s.stay))}</span>` : ""}${s && s.clean && !svx ? `<span class="chip k">${esc(kindName(s.clean))}${s.cleanFromSheet ? "" : " 예상"}</span>` : ""}${s && s.flags && s.flags.length ? s.flags.map(f => `<span class="chip warn">${esc(f)}</span>`).join("") : ""}</div>
       ${demo ? "" : (() => { const h = staySection(id, st.rdate); return `<div class="stayb ${h.includes("stay0") ? "empty" : ""}">${h}</div>`; })()}
       <div class="acts">
         ${!demo ? `<button type="button" class="btn" id="roomNew">이 객실로 보내기</button>` : ""}
@@ -1975,6 +1993,9 @@
     } else {
       steps = [["req", "요청 입력"], ["todo", kindName(x.kind)], ["ok", "청소 완료"]];
       cur = s.done ? "ok" : OPS.Svc.hkTodo(x) ? "todo" : "req";
+      if (!s.done && (fo || hk)) side.push(x.kind === "전체재실" ? btn("kindlite", "일반 청소로 바꾸기") : btn("kindfull", "전체 청소로 바꾸기"));
+      if (s.kindSet && (fo || hk)) side.push(btn("kindauto", "자동(주기)으로 되돌리기"));
+      if (x.force && !s.done) side.push(`<span class="kd force">${esc(String(x.day))}일째 장기 투숙 점검</span>`);
       if (cur === "req") { note = "손님 요청(시간대)이 없으면 청소하지 않습니다."; if (fo) next = `<button type="button" class="btn main big" data-stepreq="${esc(id)}">청소 요청 입력하기</button>`; }
       else if (cur === "todo") { note = s.reply && s.reply.window ? "요청 시간 " + s.reply.window : ""; if (hk) next = btn("done", kindName(x.kind) + " 끝 → 청소 완료", true); }
       else if (hk) side.push(btn("undone", "청소 완료 취소"));
@@ -2027,6 +2048,9 @@
           <label class="f">지점 표시(영문·숫자)<input id="sPid" maxlength="20" value="${esc(S.propertyId || OPS.CTX.propertyId)}" pattern="[a-z0-9-]{1,20}"></label></div>
           <div class="row2"><label class="f">주간 근무 시작(자동 밝기·인수 기준)<input id="sDay" type="time" value="${esc(S.dayStart || OPS.CTX.dayStart)}"></label>
           <label class="f">어두운 화면 시작(자동 밝기)<input id="sNight" type="time" value="${esc(S.nightStart || OPS.CTX.nightStart)}"></label></div>
+          <div class="row2"><label class="f">재실 전체 청소 주기(일)<input id="sCycle" type="number" min="2" max="14" value="${esc(String(S.stayCycle || 3))}"></label>
+          <label class="f">장기 투숙 점검(요청 없어도 전체 청소, 일)<input id="sForce" type="number" min="3" max="30" value="${esc(String(S.forceDays || 7))}"></label></div>
+          <p class="sub" style="margin:-4px 0 8px">주기는 다음에 예약표를 올릴 때부터 적용됩니다. 처음 쓸 때는 지난 청소표를 몇 장 올려 두면 그 날짜를 기준으로 전체 청소 날이 맞춰집니다.</p>
           <label class="f">비번 변경 담당 (비밀번호 제공 객실 퇴실 시)<select id="sPw">${OPS.DEPTS.filter(d => d.id !== "MG").map(d => `<option value="${d.id}" ${(S.pwDept || OPS.CTX.pwDept) === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></label>
           <button class="btn main" type="submit">저장</button>
         </form></section>
@@ -2097,6 +2121,7 @@
     OPS.CTX.dayStart = S.dayStart || "08:00";   // [web] 주간 근무 시작 08:00
     OPS.CTX.nightStart = S.nightStart || "22:00";
     OPS.CTX.pwDept = S.pwDept || "FM";
+    OPS.CTX.stayCycle = +S.stayCycle || 3; OPS.CTX.forceDays = +S.forceDays || 7;   // [web] 재실 전체 청소 주기 · 장기 투숙 점검
     OPS.CATEGORIES = S.categories && S.categories.length ? S.categories.slice() : OPS.DEFAULT_CATEGORIES.slice();
   }
   async function saveSettings(patch) {
@@ -2501,7 +2526,7 @@
       if (e.target.id === "propForm") {
         const pid = $("sPid").value.trim().toLowerCase();
         if (!/^[a-z0-9-]{1,20}$/.test(pid)) throw new Error("지점 표시는 영문 소문자·숫자·하이픈 20자 이내입니다.");
-        await saveSettings({ propertyName: $("sName").value.trim().slice(0, 40), propertyId: pid, dayStart: $("sDay").value, nightStart: $("sNight").value, pwDept: $("sPw").value });
+        await saveSettings({ propertyName: $("sName").value.trim().slice(0, 40), propertyId: pid, dayStart: $("sDay").value, nightStart: $("sNight").value, pwDept: $("sPw").value, stayCycle: Math.max(2, Math.min(14, +$("sCycle").value || 3)), forceDays: Math.max(3, Math.min(30, +$("sForce").value || 7)) });
         say("지점 설정을 저장했습니다."); render(); return;
       }
       if (e.target.id === "catForm") {

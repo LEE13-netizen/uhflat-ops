@@ -1018,6 +1018,44 @@
   const kindChip = k => k === "전체재실" ? `<span class="kd full" title="침구·욕실·바닥까지 전체">전체 청소</span>` : k === "재실청소" ? `<span class="kd lite" title="쓰레기·수건·정리">일반 청소</span>` : esc(kindName(k));
 
   const tAt = o => (o && o.at ? hm(o.at).split(" ")[1] : "");
+  // [web] 청소·재실 요약 숫자. 아래 단락(foView·hkView)과 같은 기준으로 센다
+  function svcCounts(list) {
+    const S = OPS.Svc, st0 = list.filter(x => x.type === "stay"), ot = list.filter(x => x.type === "out");
+    return {
+      stay: st0.length,
+      sNo: st0.filter(x => !x.s.reply && !x.s.done).length,
+      sReq: st0.filter(x => !x.s.done && S.stayWork(x.s)).length,
+      sX: st0.filter(x => !x.s.done && x.s.reply && !S.stayWork(x.s)).length,
+      sDone: st0.filter(x => x.s.done).length,
+      out: ot.length,
+      oPre: ot.filter(x => !x.s.co && !x.s.ext && !x.s.done).length,
+      oIng: ot.filter(x => x.s.co && !x.s.done && !x.s.ext).length,
+      oRdy: ot.filter(x => x.s.done && !x.s.ext).length,
+      oExt: ot.filter(x => x.s.ext).length
+    };
+  }
+  // [web] 요약 숫자 → 이동할 단락. 프론트·시설(foView)과 키핑(hkView)의 단락 이름이 다르다
+  const SV_GO = {
+    fo: { stay: "#sv-stay", sNo: "fo-s-no", sReq: "fo-s-req", sX: "fo-s-req", sDone: "fo-s-done", out: "#sv-out", oPre: "fo-o-pre", oIng: "fo-o-ing", oRdy: "fo-o-rdy", oExt: "fo-o-ext" },
+    hk: { stay: "#sv-stay", sNo: "hk-s-off", sReq: "hk-s-todo", sX: "hk-s-off", sDone: "hk-s-done", out: "#sv-out", oPre: "hk-o-pre", oIng: "hk-o-todo", oRdy: "hk-o-done", oExt: "hk-o-ext" }
+  };
+  function jumpTo(el, block) {
+    if (!el) return false;
+    const d = el.closest("details.secd"); if (d && !d.open) d.open = true;
+    el.scrollIntoView({ block: block || "start", behavior: "smooth" });
+    el.classList.remove("jump"); void el.offsetWidth; el.classList.add("jump");
+    setTimeout(() => el.classList.remove("jump"), 1600);
+    return true;
+  }
+  function svGo(k) {
+    if (k === "ack") { jumpTo(document.querySelector("#view .srow.pend")); return; }
+    const t = SV_GO[st.role === "HK" ? "hk" : "fo"][k]; if (!t) return;
+    if (t[0] === "#") { jumpTo(document.querySelector(t)); return; }
+    const d = document.querySelector(`details.secd[data-sec="${CSS.escape(t)}"]`);
+    if (!d) { flash("해당하는 객실이 없습니다."); return; }
+    if (!d.open) { d.open = true; mem.set("sec:" + t, "1"); }
+    jumpTo(d);
+  }
 
   function svcView() {
     const M = boardM();
@@ -1030,13 +1068,20 @@
     // [web] 본관·신관을 한 목록에 섞지 않는다. 기본은 본관(첫 동)
     if (multiB()) { if (!st.svcB || !M.buildings.some(b => b.id === st.svcB)) st.svcB = M.buildings[0].id; list = list.filter(x => x.r.b === st.svcB); }
     const sm = OPS.Svc.summary(list);
+    // [web] 요약: 재실 줄 · 퇴실 줄로 나누고, 숫자를 누르면 아래 그 단락으로 바로 간다(접혀 있으면 펼침)
+    const sv = svcCounts(list);
+    const go = (k, label, n, cls) => `<button type="button" class="svn ${cls || ""}" data-svgo="${k}" ${n ? "" : "disabled"}>${esc(label)} <b>${n}</b></button>`;
     const head = `<section class="card"><div class="rbar" style="margin-bottom:6px"><h2 style="margin:0">청소·재실</h2>
         <div class="chips dates">${dates.map(x => `<button type="button" data-rdate="${esc(x)}" aria-pressed="${x === st.rdate}">${esc(x.slice(5).replace("-", "/"))}${x === today ? " 오늘" : ""}</button>`).join("")}</div>
         ${multiB() ? `<div class="chips bldc">${M.buildings.map(b => { const n = svcRows().filter(x => x.r.b === b.id).length; return `<button type="button" data-svcb="${esc(b.id)}" aria-pressed="${b.id === st.svcB}">${esc(b.name)}${n ? ` <b>${n}</b>` : ""}</button>`; }).join("")}</div>` : ""}</div>
-      ${multiB() ? `<p class="bldnow">${esc((M.buildings.find(b => b.id === st.svcB) || {}).name || "")} 목록입니다. ${esc(M.buildings.filter(b => b.id !== st.svcB).map(b => b.name).join("·"))}은(는) 위에서 바꿔 보십시오.</p>` : ""}
-      ${d ? `<div class="sums" style="margin:0"><span class="sum">재실 <b>${sm.stay}</b></span><span class="sum stay">청소 요청 <b>${sm.time}</b></span><span class="sum">청소 X <b>${sm.refuse}</b></span><span class="sum free">요청 없음 <b>${sm.wait + sm.none}</b></span><span class="sum out">퇴실 <b>${sm.out}</b> (퇴실 완료 ${sm.co})</span><span class="sum in">완료 <b>${sm.done}</b></span>${sm.ack ? `<span class="needbtn" style="padding:2px 10px">키핑 미확인 <b>${sm.ack}</b></span>` : ""}</div>` : ""}
-      ${d ? houseLine() : ""}
-      <p class="sub" style="margin:8px 0 0">재실 객실: <span class="kd full">전체 청소</span> = 체크인 기준 3박째마다(마지막 전체 청소 날 기준, 못 하면 다음 날로 이월) · <span class="kd lite">일반 청소</span> = 그 사이 날 쓰레기·수건·정리. 청소표를 올리면 청소표 값이 우선입니다.<br>재실: 요청 시간대(시작~끝)·청소 종류 입력 → 키핑 확인 → 완료. 요청이 없으면 청소하지 않습니다. 퇴실: 퇴실 완료 → 키핑 확인 → 완료. 비밀번호를 제공한 객실은 퇴실 완료 때 비번 변경 업무가 생깁니다.</p>
+      ${d ? `<div class="svsum">
+        <div class="svl"><button type="button" class="svh stay" data-svgo="stay">재실 <b>${sv.stay}</b></button><div class="svi">${go("sNo", "요청 없음", sv.sNo, "nreq")}${go("sReq", "청소 요청", sv.sReq, "stay")}${go("sX", "청소 X", sv.sX)}${go("sDone", "완료", sv.sDone, "in")}</div></div>
+        <div class="svl"><button type="button" class="svh out" data-svgo="out">퇴실 <b>${sv.out}</b></button><div class="svi">${go("oPre", "퇴실 전", sv.oPre)}${go("oIng", "퇴실 완료·청소 중", sv.oIng, "out")}${go("oRdy", "입실 가능", sv.oRdy, "in")}${sv.oExt ? go("oExt", "연장", sv.oExt) : ""}</div></div>
+        ${sm.ack ? `<button type="button" class="needbtn svack" data-svgo="ack">키핑 미확인 <b>${sm.ack}</b> 보기</button>` : ""}
+      </div>` : ""}
+      ${d ? houseLine(multiB() ? st.svcB : null) : ""}
+      <details class="svhelp"><summary>처리 순서·청소 종류 설명</summary><p class="sub" style="margin:6px 0 0"><span class="kd full">전체 청소</span> 체크인 기준 3박째마다(마지막 전체 청소 날 기준, 못 하면 다음 날로 이월) · <span class="kd lite">일반 청소</span> 그 사이 날 쓰레기·수건·정리. 청소표를 올리면 청소표 값이 우선입니다.</p>
+        <ul class="sub svsteps"><li><b>재실</b> 요청 시간대(시작~끝)·청소 종류 입력 → 키핑 확인 → 완료. 요청이 없으면 청소하지 않습니다.</li><li><b>퇴실</b> 퇴실 완료 → 키핑 확인 → 완료. 비밀번호를 제공한 객실은 퇴실 완료 때 비번 변경 업무가 생깁니다.</li></ul></details>
     </section>`;
     const tools = (st.role === "FO" || OPS.isMgr(st.role)) ? frontTools(M) : "";
     if (!d) return head + tools + `<div class="empty">${esc(st.rdate)} 객실 상태가 없습니다. 예약표를 반영하거나 예약을 직접 추가하면 재실·퇴실 목록이 생깁니다.</div>`;
@@ -1172,17 +1217,19 @@
   }
 
   // 투숙 객실 수: PMS 재실 수와 맞춰 보는 용도
-  function houseLine() {
+  function houseLine(bOnly) {   // [web] bOnly: 청소·재실에서 고른 동만 센다(목록과 숫자를 맞춘다)
     const M = boardM(); let stay = 0, out = 0, inn = 0;
+    const bf = bOnly || st.rb;
     Object.keys(M.rooms).forEach(id => {
-      if (st.rb !== "all" && M.rooms[id].b !== st.rb) return;
+      if (bf && bf !== "all" && M.rooms[id].b !== bf) return;
       const x = roomState(id, st.rdate); if (!x) return;
       if (x.stay === "연박") stay++;
       if (x.stay === "퇴실" || x.stay === "퇴실·입실") out++;
       if (x.stay === "입실" || x.stay === "퇴실·입실") inn++;
     });
     const tomorrow = st.rdate > OPS.ymd(Date.now());
-    return `<p class="sub" style="margin:8px 0 0">${tomorrow ? "예정 · " : ""}전날 밤 투숙 <b>${stay + out}</b>실 = 연박 ${stay} + 퇴실 ${out} · 입실 ${inn} → 오늘 밤 투숙 <b>${stay + inn}</b>실. 프로그램(PMS) 재실 수와 다르면 예약표를 확인해 주십시오.</p>`;
+    const bn = bOnly ? ((M.buildings || []).find(b => b.id === bOnly) || {}).name || "" : "";
+    return `<p class="sub houseln" title="프로그램(PMS) 재실 수와 다르면 예약표를 확인해 주십시오.">${tomorrow ? "예정 · " : ""}${bn ? esc(bn) + " " : ""}투숙 <b>${stay + out}</b>실(전날 밤) → <b>${stay + inn}</b>실(오늘 밤) <span class="hlx">= 재실 ${stay} · 퇴실 ${out} · 입실 ${inn} · PMS와 다르면 예약표 확인</span></p>`;
   }
 
   // 프론트 도구: 예약표 반영 + 새 예약 직접 추가
@@ -1295,10 +1342,10 @@
     const sNo = stay.filter(x => !x.s.reply && !x.s.done), sReq = stay.filter(x => x.s.reply && !x.s.done), sDn = stay.filter(x => x.s.done);
     const oAns = out.filter(x => OPS.Svc.foNeeds(x)), oPre = out.filter(x => !x.s.co && !x.s.ext && !x.s.done && !OPS.Svc.foNeeds(x));
     const oIng = out.filter(x => x.s.co && !x.s.done && !x.s.ext), oRdy = out.filter(x => x.s.done && !x.s.ext), oExt = out.filter(x => x.s.ext);
-    return `<section class="card"><h2>재실 청소 요청 <span class="c">${stay.length}</span></h2><p class="sub">청소표의 재실 객실입니다. 손님이 요청한 시간대(시작~끝)와 청소 종류를 적으면 키핑 화면에 바로 뜹니다. 적지 않은 객실은 청소하지 않습니다. 단락 제목을 누르면 펼치고 접습니다.</p>${stay.length
-        ? secBlock("fo-s-no", "요청 입력 전", sNo, stayRow) + secBlock("fo-s-req", "요청함·정비 대기", sReq, stayRow) + secBlock("fo-s-done", "청소 완료", sDn, stayRow, { open: false })
+    return `<section class="card" id="sv-stay"><h2>재실 청소 요청 <span class="c">${stay.length}</span></h2><p class="sub">청소표의 재실 객실입니다. 손님이 요청한 시간대(시작~끝)와 청소 종류를 적으면 키핑 화면에 바로 뜹니다. 적지 않은 객실은 청소하지 않습니다. 단락 제목을 누르면 펼치고 접습니다.</p>${stay.length
+        ? secBlock("fo-s-no", "요청 없음(입력 전)", sNo, stayRow) + secBlock("fo-s-req", "요청함·정비 대기", sReq, stayRow) + secBlock("fo-s-done", "청소 완료", sDn, stayRow, { open: false })
         : `<div class="empty">재실 객실이 없습니다.</div>`}</section>
-      <section class="card"><h2>퇴실 <span class="c">${out.length}</span></h2><p class="sub">입실 가능 <b>${ready}</b>실 · 청소 중 ${ing}실. 먼저 필요한 객실은 "우선 준비"로 입실 시각을 걸면 키핑 목록 맨 위로 갑니다. 단락 제목을 누르면 펼치고 접습니다.</p>${out.length
+      <section class="card" id="sv-out"><h2>퇴실 <span class="c">${out.length}</span></h2><p class="sub">입실 가능 <b>${ready}</b>실 · 청소 중 ${ing}실. 먼저 필요한 객실은 "우선 준비"로 입실 시각을 걸면 키핑 목록 맨 위로 갑니다. 단락 제목을 누르면 펼치고 접습니다.</p>${out.length
         ? secBlock("fo-o-ans", "답할 것(손님 아직 있음)", oAns, outRow) + secBlock("fo-o-pre", "퇴실 전", oPre, outRow) + secBlock("fo-o-ing", "청소 중(퇴실 확인~점검 대기)", oIng, outRow, fo ? { unread: OPS.Svc.foCoNeedsAck, ackAct: "fo" } : {})
           + secBlock("fo-o-rdy", "입실 가능", oRdy, outRow, fo ? { open: false, unread: OPS.Svc.foNeedsAck, ackAct: "fo" } : { open: false }) + secBlock("fo-o-ext", "연장·청소 없음", oExt, outRow, { open: false })
         : `<div class="empty">퇴실 객실이 없습니다.</div>`}</section>`;
@@ -1334,10 +1381,10 @@
     const sDone = stays.filter(x => x.s.done).sort((a, b) => b.s.done.at - a.s.done.at);
     const sOff = stays.filter(x => !x.s.done && !OPS.Svc.hkTodo(x)).sort(byNo);
     const prog = (d, all) => `<span class="prog" aria-label="완료 ${d} / ${all}"><i style="width:${all ? Math.round(d / all * 100) : 0}%"></i></span><span class="c">완료 ${d} / ${all}</span>`;
-    return `<section class="card"><h2>퇴실 청소 ${prog(oDone.length, outs.length)}</h2><p class="sub">당일 입실·우선 준비 객실이 맨 위입니다. 깜빡이는 줄은 새로 들어온 내용이니 확인을 눌러 주십시오. 완료한 객실도 아래에 남습니다.</p>
+    return `<section class="card" id="sv-out"><h2>퇴실 청소 ${prog(oDone.length, outs.length)}</h2><p class="sub">당일 입실·우선 준비 객실이 맨 위입니다. 깜빡이는 줄은 새로 들어온 내용이니 확인을 눌러 주십시오. 완료한 객실도 아래에 남습니다.</p>
         ${outs.length ? secBlock("hk-o-todo", "할 청소", oTodo, row, { unread: OPS.Svc.hkNeedsAck, ackAct: "ack" }) + secBlock("hk-o-pre", "퇴실 전", oPre, preRow, { note: "손님이 나간 것을 확인했으면 \"퇴실 확인·청소 시작\"을 누르십시오. 프론트가 퇴실 완료를 눌러도 할 청소로 올라갑니다" }) + secBlock("hk-o-done", "완료", oDone, doneRow, { open: false }) + secBlock("hk-o-ext", "연장·청소 없음", oExt, offRow, { open: false }) : `<div class="empty">오늘 퇴실 객실이 없습니다.</div>`}
         ${outs.length && !oTodo.length && !oPre.length && oDone.length ? `<p class="okline">퇴실 청소를 모두 마쳤습니다.</p>` : ""}</section>
-      <section class="card"><h2>재실 청소 ${prog(sDone.length, sTodo.length + sDone.length)}</h2><p class="sub">프론트가 적은 요청 시간순입니다. 요청이 없는 객실은 청소하지 않습니다.</p>
+      <section class="card" id="sv-stay"><h2>재실 청소 ${prog(sDone.length, sTodo.length + sDone.length)}</h2><p class="sub">프론트가 적은 요청 시간순입니다. 요청이 없는 객실은 청소하지 않습니다.</p>
         ${stays.length ? secBlock("hk-s-todo", "할 재실 청소", sTodo, row, { unread: OPS.Svc.hkNeedsAck, ackAct: "ack" }) + secBlock("hk-s-done", "완료", sDone, doneRow, { open: false }) + secBlock("hk-s-off", "요청 없음·청소 X", sOff, offRow, { open: false, note: "청소하지 않는 재실 객실" }) : `<div class="empty">오늘 재실 객실이 없습니다.</div>`}
         ${sTodo.length + sDone.length && !sTodo.length ? `<p class="okline">재실 청소 요청을 모두 마쳤습니다.</p>` : ""}</section>`;
   }
@@ -1409,7 +1456,7 @@
     if (!arr.length) return "";
     const un = o.unread ? arr.filter(o.unread) : [];
     const saved = mem.get("sec:" + key, "");
-    const open = un.length ? true : saved ? saved === "1" : o.open !== false;
+    const open = un.length || (st.svcEdit && arr.some(x => x.id === st.svcEdit)) ? true : saved ? saved === "1" : o.open !== false;   // [web] 입력 중인 줄이 있으면 늘 펼친다
     return `<details class="secd" data-sec="${esc(key)}" ${open ? "open" : ""}><summary class="sech"><span class="sect">${esc(title)}</span><span class="c">${arr.length}</span>${un.length ? `<span class="unread">새 ${un.length}</span>` : ""}${o.note ? `<small>${esc(o.note)}</small>` : ""}</summary>`
       + (un.length && o.ackAct ? `<div class="secacts"><button type="button" class="btn sm main" data-secack="${esc(o.ackAct)}" data-ids="${esc(un.map(x => x.id).join(","))}">이 단락 모두 확인 (${un.length})</button></div>` : "")
       + `<div class="slist">${arr.map(fn).join("")}</div></details>`;
@@ -2343,7 +2390,20 @@
     if (sv && sv.tagName !== "INPUT") { if (STAGE_ACTS[sv.dataset.svc] && canStage()) stageAct(sv.dataset.svc, sv.dataset.id); else svcAct(sv.dataset.svc, sv.dataset.id, sv); return; }   // [web] 청소 단계는 되돌리기와 함께
     if (e.target.id === "goSvc") { st.openRoomId = null; $("dlg").close(); st.tab = "svc"; render(); return; }
     const sq = e.target.closest("[data-stepreq]");
-    if (sq) { const id = sq.dataset.stepreq, rr = boardM().rooms[id]; st.openRoomId = null; $("dlg").close(); st.tab = "svc"; if (rr) st.svcB = rr.b; st.svcEdit = id; render(); const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`); if (el) el.scrollIntoView({ block: "center" }); return; }
+    // [web] 청소 요청 입력하기: 청소·재실로 가서 그 호실 입력 칸을 펼쳐(단락이 접혀 있어도) 가운데로 올리고 시작 시각에 커서를 둔다
+    if (sq) {
+      const id = sq.dataset.stepreq, rr = boardM().rooms[id];
+      st.openRoomId = null; $("dlg").close(); st.tab = "svc"; if (rr) st.svcB = rr.b; st.svcEdit = id; render();
+      setTimeout(() => {
+        const inp = $("rf-" + id), row = inp && inp.closest(".srow");
+        if (!row) { flash((rr ? rr.no + "호 " : "") + "청소 요청 입력 칸을 찾지 못했습니다. 목록에서 직접 눌러 주십시오."); return; }
+        jumpTo(row, "center");
+        try { inp.focus({ preventScroll: true }); } catch (e2) {}
+      }, 50);
+      return;
+    }
+    const sg = e.target.closest("[data-svgo]");
+    if (sg) { svGo(sg.dataset.svgo); return; }
     const bm = e.target.closest("[data-bmode]");
     if (bm) { st.bMode = bm.dataset.bmode; mem.set("bmode", st.bMode); render(); return; }
     const pb = e.target.closest("[data-pb]");

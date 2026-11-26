@@ -332,3 +332,55 @@ ol.steps.mini li.now i{transform:none}
 ol.steps.mini li:not(:last-child)::after{top:9px;left:calc(50% + 11px);right:calc(-50% + 11px)}
 @media(max-width:600px){ol.steps.mini li span{font-size:10px;letter-spacing:-.3px}}
 ol.steps.mini{max-width:560px}
+/* [web] 청소·재실 요약: 재실 줄 · 퇴실 줄. 숫자를 누르면 그 단락으로 이동 */
+.svsum{display:grid;gap:8px;margin:6px 0 2px}
+.svl{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.svh{min-width:6.4em;min-height:38px;border:0;border-radius:10px;padding:4px 12px;font-size:15px;font-weight:700;cursor:pointer;text-align:left}
+.svh b{font:700 19px "Barlow Semi Condensed","Noto Sans KR",sans-serif;margin-left:4px}
+.svi{display:flex;flex-wrap:wrap;gap:6px}
+.svn{min-height:36px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);padding:3px 12px;font-size:14px;font-weight:600;cursor:pointer}
+.svn b{font:700 16.5px "Barlow Semi Condensed","Noto Sans KR",sans-serif;margin-left:2px}
+.svn.stay,.svn.in,.svn.out{border-color:transparent}
+.svn:disabled{opacity:.45;cursor:default}
+.svn:not(:disabled):hover,.svh:hover{box-shadow:0 0 0 2px var(--accent)}
+.svn:focus-visible,.svh:focus-visible,.svack:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.svack{justify-self:start;min-height:36px}
+.houseln{margin:10px 0 0}.houseln .hlx{color:var(--muted);font-size:.92em}
+.svhelp summary{cursor:pointer;font-size:14px;font-weight:600;color:var(--muted);min-height:36px;display:flex;align-items:center;margin-top:2px}
+.svsteps{margin:6px 0 0;padding-left:1.2em}
+#sv-stay,#sv-out,details.secd,.srow{scroll-margin-top:90px}
+.jump{animation:opsJump 1.6s ease-out}
+@keyframes opsJump{0%,45%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
+@media(prefers-reduced-motion:reduce){.jump{animation:none;outline:3px solid var(--accent)}}
+@media(max-width:600px){.svl{align-items:flex-start}.svh{min-width:0}}
+/* [web] 공실을 눈에 띄게: 진한 "공실" 알약 + 옅은 빗금 + 진한 아래 띠 (다른 상태는 색 띠, 공실은 무늬로 구분) */
+.rt.st-free:not(.hot){background:repeating-linear-gradient(-45deg,transparent 0 7px,var(--soft) 7px 9px),var(--card)}
+.rt.st-free .ts{align-self:flex-start;padding:1px 10px;border-radius:999px;background:var(--ink);color:var(--card);font-weight:800}
+.rt.st-free::after{background:var(--ink)}
+.tile.st-free::after,.lg.st-free::before{background:var(--ink)}
+.tile.st-free .ts{color:var(--ink);font-weight:800}
+.pr.st-free .bar{fill:var(--ink)}
+.pr.st-free text.sy{fill:var(--ink);font-weight:800}
+.sk.ours.st-free{background:repeating-linear-gradient(-45deg,transparent 0 6px,var(--soft) 6px 8px),var(--card);box-shadow:inset 0 -4px 0 var(--ink)}
+.sk.ours.st-free small{color:var(--ink);font-weight:800}
+.sum.free,.chip.free{background:var(--card);color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--ink);font-weight:700}
+/* [web] 의견 보내기 창 (staff 창과 같은 .sp 틀) */
+.fbdot{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;margin-left:4px;border-radius:10px;background:var(--hot);color:#fff;font:700 12px/1 "Barlow Semi Condensed",sans-serif}
+.fb-kinds{display:grid;gap:8px;margin:8px 0 12px}
+.fb-kinds button{display:grid;gap:2px;text-align:left;min-height:56px;padding:10px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);cursor:pointer;font-size:15px}
+.fb-kinds button span{font-size:13.5px;color:var(--muted)}
+.fb-kinds button[aria-checked=true]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent);background:var(--accent-bg)}
+.fb-kinds button[data-fbkind=room]{border-style:dashed}
+.fb-form{display:grid;gap:8px}
+.fb-form textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px;padding:10px}
+.fb-form .btn{justify-self:start;min-height:44px}
+.fb-item{border-top:1px solid var(--line);padding:12px 0}
+.fb-item:first-of-type{border-top:0}
+.fb-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.fb-k,.fb-s{font-size:13px;font-weight:700;padding:1px 10px;border-radius:999px;background:var(--soft);color:var(--ink)}
+.fb-k.bug{background:var(--hot-bg);color:var(--hot)}.fb-k.idea{background:var(--accent-bg);color:var(--accent)}
+.fb-s.new{box-shadow:inset 0 0 0 1.5px var(--ink)}.fb-s.done{background:var(--ok-bg);color:var(--ok)}.fb-s.hold{background:var(--warn-bg);color:var(--warn)}
+.fb-body{margin:6px 0;font-size:15.5px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.fb-ctx{margin:0 0 6px;overflow-wrap:anywhere}
+.fb-reply{margin:6px 0 0;padding:8px 12px;border-radius:10px;background:var(--bg);font-size:14.5px}
+.fb-rep .fb-grow{flex:1 1 280px}.fb-rep .fb-grow input{width:100%;box-sizing:border-box}

@@ -74,6 +74,7 @@
     const pin = [...me.querySelectorAll("button")].find(b => b.textContent.trim() === "PIN 변경");
     if (pin) ap.appendChild(pin);
     const staff = $("staffBtn"); if (staff) ap.appendChild(staff);
+    const fb = $("fbBtn"); if (fb) ap.appendChild(fb);   // 의견 보내기
     const lb = $("lockBtn");
     if (lb) { lb.innerHTML = ICON.out + "로그아웃"; lb.title = "로그아웃하고 로그인 화면으로"; lb.classList.add("wout"); ap.appendChild(lb); }
 
@@ -91,7 +92,7 @@
     document.addEventListener("click", e => {
       const b = e.target.closest(".wddb");
       if (b) { const w = b.parentNode, on = !w.classList.contains("open"); close(w); w.classList.toggle("open", on); b.setAttribute("aria-expanded", String(on)); return; }
-      if (!e.target.closest(".wpop") || e.target.closest("#lockBtn,#staffBtn") || [...document.querySelectorAll(".wpop button")].some(x => x === e.target.closest("button") && /PIN 변경/.test(x.textContent))) close();
+      if (!e.target.closest(".wpop") || e.target.closest("#lockBtn,#staffBtn,#fbBtn") || [...document.querySelectorAll(".wpop button")].some(x => x === e.target.closest("button") && /PIN 변경/.test(x.textContent))) close();
     });
     document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
   }

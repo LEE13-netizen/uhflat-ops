@@ -108,6 +108,7 @@
     addHeader();
     startIdle();
     if (window.OPS_STAFF && (OPS.Auth.admin || OPS.Auth.legacyOwner)) window.OPS_STAFF.mount();
+    if (window.OPS_FEEDBACK) window.OPS_FEEDBACK.mount();   // 의견 보내기(모든 계정)
     if (window.OPS_HEADER) setTimeout(() => window.OPS_HEADER.mount(), 0);
   }
   function addHeader() {

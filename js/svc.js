@@ -217,7 +217,7 @@
     // 프론트: 이 객실 먼저(입실 시각)
     prio: (date, id, cur, actor, time) => write(date, id, cur, { prio: time ? by(actor, { time }) : null }, actor, time ? "우선 준비 " + time : "우선 해제"),
     // 키핑: 퇴실 객실 진행 단계
-    start: (date, id, cur, actor) => write(date, id, cur, { start: by(actor), hkAck: (cur && cur.hkAck) || by(actor) }, actor, "청소 시작"),
+    start: (date, id, cur, actor) => write(date, id, cur, { start: by(actor), hkAck: by(actor) }, actor, "청소 시작"),   // [web] 시작 = 새 내용도 본 것
     cleaned: (date, id, cur, actor) => write(date, id, cur, { cleaned: by(actor) }, actor, "청소 끝·점검 대기"),
     setPwGiven: (date, id, cur, actor, on) => write(date, id, cur, { pwGiven: !!on }, actor, on ? "비번 제공 표시" : "비번 제공 해제"),
     setMemo: (date, id, cur, actor, text) => write(date, id, cur, { memo: text ? by(actor, { text: clean(text, 300) }) : null }, actor, "추가 내용"),

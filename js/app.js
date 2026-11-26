@@ -800,6 +800,7 @@
     // 현황판 한 칸 = 객실 하나의 모든 부서 상황: 숙박 상태 · 청소 단계 · 부서별 열린 업무 · 불출 · 긴급/미확인
     const svcBy = new Map(); if (!demo) svcRows().forEach(x => svcBy.set(x.id, x));
     const dBy = new Map(); if (st.rdate === today) st.deliv.filter(OPS.Desk.isOpen).forEach(d => dBy.set(d.roomId, (dBy.get(d.roomId) || 0) + 1));
+    const prevIds = new Set(demo ? [] : prevOpen().filter(x => x.d.co).map(x => x.id));   // [web] 어제 퇴실 완료 후 입실 가능까지 못 간 객실(기록 없는 방은 표시 안 함)
     const tile = r => {
       const id = OPS.Rooms.roomId(r.b, r.no), s = roomState(id, st.rdate), ts = by.get(id) || [];
       const hot = hotIds.has(id), need = needIds.has(id), x = svcBy.get(id), stage = x ? SV_SHORT[OPS.Svc.status(x)] : "";
@@ -813,7 +814,7 @@
       const badges = ["FO", "HK", "FM"].filter(k => dc[k]).map(k => `<span class="dct dc-${k}" title="${esc((OPS.DEPTS.find(d => d.id === k) || {}).name || k)} 업무 ${dc[k]}건">${icon(k, 14)}${dc[k]}</span>`).join("")
         + (dBy.get(id) ? `<span class="dct dv">불출 ${dBy.get(id)}</span>` : "") + (hasNote(id) ? `<span class="dct nt">비고</span>` : "");
       return `<button type="button" class="${cls}" data-room="${esc(id)}" aria-label="${esc(r.building)} ${esc(r.no)}호${stTxt ? ", " + esc(stTxt) : ""}${hot ? ", 긴급" : ""}${need ? ", 확인 필요" : ""}${ts.length ? ", 열린 업무 " + ts.length + "건" : ""}${cs ? ", 청소 " + esc(cs.t) : ""}">
-        <span class="rtop"><span class="tn">${esc(r.no)}</span>${hot ? `<span class="tf hot">긴급</span>` : need ? `<span class="tf need">미확인</span>` : nsr ? `<span class="tf nsr">${esc(nsr)}</span>` : ""}</span>
+        <span class="rtop"><span class="tn">${esc(r.no)}</span>${hot ? `<span class="tf hot">긴급</span>` : need ? `<span class="tf need">미확인</span>` : prevIds.has(id) ? `<span class="tf prev" title="어제 퇴실 후 입실 가능까지 못 감">어제 미완료</span>` : nsr ? `<span class="tf nsr">${esc(nsr)}</span>` : ""}</span>
         <span class="ts">${esc(stTxt)}</span>
         ${badges ? `<span class="tds">${badges}</span>` : ""}
         ${csBand(cs)}
@@ -1025,6 +1026,36 @@
       const o = {}; list.forEach(x => { if (x.roomId) o[x.roomId] = x; }); st.svc = o;
       if (st.tab === "svc" || st.tab === "board" || st.tab === "dash" || st.openRoomId) soon();
     }, e => flash("청소 기록 동기화 오류: " + (e && e.message || e)));
+    // [web] 어제 기록도 함께(어제 입실 가능까지 못 간 퇴실 객실을 오늘 화면에 띄우려고). 오늘을 볼 때만
+    if (st.svcPrevUnsub) { try { st.svcPrevUnsub(); } catch (e) {} st.svcPrevUnsub = null; }
+    st.svcPrev = {};
+    if (st.rdate === OPS.ymd(Date.now())) {
+      st.svcPrevUnsub = Store.watchWhere(COL.roomSvc, "date", OPS.Rooms.addDays(st.rdate, -1), list => {
+        const o = {}; list.forEach(x => { if (x.roomId) o[x.roomId] = x; }); st.svcPrev = o;
+        if (st.tab === "svc" || st.tab === "board") soon();
+      }, () => {});
+    }
+  }
+  // [web] 어제 퇴실 객실 중 입실 가능(또는 연장)까지 못 간 방. 어제 이 프로그램을 쓴 흔적이 있을 때만(안 쓴 날을 미완료로 오해하지 않게)
+  function prevOpen() {
+    const prev = OPS.Rooms.addDays(st.rdate, -1), P = st.svcPrev || {};
+    if (st.rdate !== OPS.ymd(Date.now()) || !dayDoc(prev)) return [];
+    if (!Object.values(P).some(x => x && (x.co || x.done))) return [];
+    const M = boardM();
+    return Object.keys(M.rooms).filter(id => { const s = roomState(id, prev); if (!s || (s.stay !== "퇴실" && s.stay !== "퇴실·입실")) return false; const d = P[id]; return !(d && (d.done || d.ext)); })
+      .map(id => ({ id, r: M.rooms[id], d: P[id] || {} }));
+  }
+  function prevCard() {
+    let list = prevOpen(); if (!list.length) return "";
+    if (multiB() && st.svcB) list = list.filter(x => x.r.b === st.svcB);   // 위에서 고른 동만
+    const sure = list.filter(x => x.d.co), none = list.filter(x => !x.d.co);
+    if (!sure.length && !none.length) return "";
+    const prev = OPS.Rooms.addDays(st.rdate, -1), stage = d => d.cleaned ? "점검 대기" : d.start ? "청소 중" : "청소 대기";
+    return `<section class="card ${sure.length ? "prevc" : "prevn"}">${sure.length ? `<h2>어제(${esc(prev.slice(5).replace("-", "/"))}) 입실 가능까지 못 간 퇴실 객실 <span class="c">${sure.length}</span></h2>
+      <p class="sub">퇴실 완료는 됐는데 점검(입실 가능)이 안 끝났습니다. 오늘 손님이 들어가기 전에 확인하고, 끝났으면 어제 화면에서 마무리하십시오.</p>
+      <div class="prevl">${sure.slice(0, 40).map(x => `<button type="button" class="prevr" data-room="${esc(x.id)}"><b>${esc(rLabel(x.r))}</b><span>${esc(stage(x.d))}</span></button>`).join("")}</div>` : ""}
+      ${none.length ? `<p class="sub prevnone">어제 퇴실 객실 중 <b>${none.length}실</b>은 이 프로그램에 퇴실·청소 기록이 없습니다(다른 방법으로 처리했을 수 있음).</p>` : ""}
+      <div class="acts"><button type="button" class="btn ${sure.length ? "main" : ""}" data-rdate="${esc(prev)}">어제 화면 열기</button></div></section>`;
   }
   const svcRows = () => { const M = boardM(); return M === DEMO || !(dayDoc(st.rdate) || manualOn(st.rdate)) ? [] : OPS.Svc.rows(M, id => roomState(id, st.rdate), st.svc); };
   const SVC_CLS = { "입실 가능": "ok", "점검 대기": "go", "청소 중": "go", "손님 아직 있음": "warn", "연장·청소 없음": "off", "완료": "ok", "시간 확정": "go", "쓰레기·수건만": "go", "퇴실 완료·청소 대기": "go", "회신 대기": "wait", "발송 전": "wait", "요청 없음": "wait", "퇴실 전": "wait", "청소 없음": "off", "무응답·청소 없음": "off" };
@@ -1102,9 +1133,9 @@
     </section>`;
     const tools = (st.role === "FO" || OPS.isMgr(st.role)) ? frontTools(M) : "";
     if (!d) return head + tools + `<div class="empty">${esc(st.rdate)} 객실 상태가 없습니다. 예약표를 반영하거나 예약을 직접 추가하면 재실·퇴실 목록이 생깁니다.</div>`;
-    if (st.role === "HK") return head + hkView(list);
+    if (st.role === "HK") return head + prevCard() + hkView(list);
     if (st.role === "FM") return head + `<section class="card"><p class="sub">시설 역할은 보기만 합니다. 청소 중 발견한 시설 이상은 키핑이 객실에서 업무로 등록합니다.</p>${foView(list, true)}</section>`;
-    return head + foView(list, false) + tools;
+    return head + prevCard() + foView(list, false) + tools;
   }
 
   // ---------- 불출·분실물(키핑·시설 톡방 대체) ----------
@@ -1374,7 +1405,8 @@
     const row = x => {
       const s = x.s, need = OPS.Svc.hkNeedsAck(x);
       const what = x.type === "out" ? `퇴실 ${esc(tAt(s.co))}${s.prio ? ` · <b class="warnt">${esc(s.prio.time)} 입실 우선</b>` : x.sameDayIn ? ` · <b class="warnt">당일 입실</b>` : ""}${s.cleaned ? ` · 청소 끝 ${esc(tAt(s.cleaned))}` : s.start ? ` · 청소 중` : ""}` : !s.reply ? `${kindChip(x.kind)} · <b class="warnt">${esc(String(x.day))}일째 점검(요청 없음, 프론트와 시간 맞추기)</b>` : s.reply.type === "time" ? `<b>${esc(s.reply.window)}</b> · ${s.reply.kinds ? esc(OPS.Svc.reqText(x)) : kindChip(x.kind)}` : "청소 X · 요청만";
-      const stageBtn = x.type !== "out" || need ? "" : !s.start ? `<button type="button" class="btn sm main" data-svc="start" data-id="${esc(x.id)}">청소 시작</button>` : !s.cleaned ? `<button type="button" class="btn sm main" data-svc="cleaned" data-id="${esc(x.id)}">청소 끝 → 점검 대기</button>` : "";
+      // [web] 새로 온 줄도 바로 "청소 시작"(시작하면 확인도 같이 남는다)
+      const stageBtn = x.type !== "out" ? "" : !s.start ? `<button type="button" class="btn sm main" data-svc="start" data-id="${esc(x.id)}">청소 시작</button>` : !s.cleaned ? `<button type="button" class="btn sm main" data-svc="cleaned" data-id="${esc(x.id)}">청소 끝 → 점검 대기</button>` : "";
       return `<div class="srow ${need ? "pend blinkrow" : ""}">
         <div class="sh"><b class="sn">${esc(rLabel(x.r))}</b>${fmChip(x.id)}<span>${what}</span></div>${miniSteps(x)}
         ${s.reply && s.reply.items && !s.reply.kinds ? `<div class="sx">요청: ${esc(s.reply.items)}</div>` : ""}${s.memo && s.memo.text ? `<div class="sx">추가: ${esc(s.memo.text)}</div>` : ""}
@@ -1438,10 +1470,10 @@
       else if (act === "undone") doc = await S.undoDone(T, id, cur, a);
       else if (act === "stillin") doc = await S.stillIn(T, id, cur, a);
       else if (act === "kindfull" || act === "kindlite" || act === "kindauto") doc = await S.setKind(T, id, cur, a, act === "kindfull" ? "전체재실" : act === "kindlite" ? "재실청소" : "");
-      else if (act === "late") { doc = await S.late(T, id, cur, a, $("lt-" + id).value); st.svcEdit = null; }
+      else if (act === "late") { doc = await S.late(T, id, cur, a, nearInput(el, "lt-" + id)); st.svcEdit = null; }
       else if (act === "ext") { doc = await S.ext(T, id, cur, a, true); st.svcEdit = null; }
       else if (act === "unext") doc = await S.ext(T, id, cur, a, false);
-      else if (act === "prio") { doc = await S.prio(T, id, cur, a, $("pt-" + id).value); st.svcEdit = null; }
+      else if (act === "prio") { doc = await S.prio(T, id, cur, a, nearInput(el, "pt-" + id)); st.svcEdit = null; }
       else if (act === "unprio") doc = await S.prio(T, id, cur, a, "");
       else if (act === "start") doc = await S.start(T, id, cur, a);
       else if (act === "cleaned") doc = await S.cleaned(T, id, cur, a);
@@ -1449,6 +1481,8 @@
     } catch (e) { flash(e.message || String(e)); }
   }
 
+  // [web] 누른 버튼 옆 입력칸 값(객실 상세와 목록에 같은 id가 동시에 있을 수 있어서 버튼 기준으로 찾는다)
+  const nearInput = (el, fallbackId) => { const w = el && el.closest && el.closest(".lt, .sedit, .acts"); const i = w && w.querySelector("input[type=time]"); return i ? i.value : ($(fallbackId) || {}).value || ""; };
   // [web] 오늘 화면에서만 기록하는 동작 / 객실의 끝나지 않은 시설 업무
   const TODAY_ONLY = new Set(["co", "unco", "hkco", "hkcostart", "start", "cleaned", "done", "undone", "ack", "foack", "foco", "stillin"]);   // 재실 요청(내일 것 미리 받기)·레이트·우선·연장은 허용
   const openFm = id => st.tasks.filter(t => Core.isOpen(t) && t.toDept === "FM" && (t.roomId === id || OPS.Rooms.resolve(t, boardM()) === id));
@@ -2041,6 +2075,7 @@
       if (s.ext) { note = "연장 객실입니다. 오늘은 청소하지 않습니다."; if (fo) side.push(btn("unext", "연장 취소")); }
       else if (cur === "pre") {
         if (fo) { next = btn("co", "손님 퇴실 → 퇴실 완료", true); side.push(`<span class="lt"><input type="time" id="lt-${esc(id)}" step="600" aria-label="레이트 체크아웃 시각">${btn("late", "레이트 체크아웃")}</span>`, btn("ext", "연장(오늘 청소 없음)")); }
+        if (fo) side.push(`<span class="lt"><input type="time" step="600" value="${esc(s.prio ? s.prio.time : "")}" aria-label="입실 시각(우선 준비)">${btn("prio", s.prio ? "우선 준비 " + s.prio.time + " 바꾸기" : "우선 준비(이른 입실)")}</span>`);   // [web] 객실 상세에서 바로
         else if (hk) { next = btn("hkcostart", "손님 나감 확인 → 청소 시작", true); side.push(btn("stillin", "손님이 아직 있음")); }
         if (s.late) note = `레이트 체크아웃 ${s.late.time}`;
       } else if (cur === "wait") {
@@ -2063,7 +2098,7 @@
     return `<div class="stepw"><div class="steph"><b>${esc(st.rdate.slice(5).replace("-", "/"))} ${x.type === "out" ? "퇴실 청소" : "재실 · " + esc(kindName(x.kind))}</b>${ackLine(x) ? `<span class="svcl">${ackLine(x)}</span>` : ""}</div>
       <ol class="steps">${steps.map(([k, t], i) => `<li class="${i < ci ? "past" : i === ci ? "now" : ""}"><i>${i < ci ? "✓" : i + 1}</i><span>${esc(t)}</span></li>`).join("")}</ol>
       ${next ? `<div class="stepn">${next}</div>` : ""}${note ? `<p class="sub stepnote">${esc(note)}</p>` : ""}${side.length ? `<div class="steps2">${side.join("")}</div>` : ""}
-      <p class="sub" style="margin:6px 0 0">잘못 누르면 화면 아래 "되돌리기"를 6초 안에 누르십시오. 목록으로 한꺼번에 처리하려면 <button type="button" class="lnk" id="goSvc">청소·재실</button>.</p></div>`;
+      ${next || side.length ? `<p class="sub" style="margin:6px 0 0">잘못 누르면 화면 아래 "되돌리기"를 6초 안에 누르십시오. 목록으로 한꺼번에 처리하려면 <button type="button" class="lnk" id="goSvc">청소·재실</button>.</p>` : `<p class="sub" style="margin:6px 0 0">청소 단계는 프론트·키핑이 바꿉니다.</p>`}</div>`;
   }
   async function saveNote(dept, text) {
     if (st.role !== dept) throw new Error(OPS.deptName(st.role) + " 역할은 " + OPS.deptName(dept) + " 비고를 고칠 수 없습니다.");

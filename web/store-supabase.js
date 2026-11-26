@@ -47,7 +47,7 @@
     try {
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) { hiddenAt = Date.now(); return; }
-        if (hiddenAt && Date.now() - hiddenAt > 5 * 60e3) Object.values(hubs).forEach(h => h.load());
+        if (hiddenAt && Date.now() - hiddenAt > 5 * 60e3) { Object.values(hubs).forEach(h => h.load()); wheres.forEach(w => w.load().catch(() => {})); }
         hiddenAt = 0;
       });
     } catch (e) {}
@@ -68,8 +68,14 @@
       return h;
     }
     // 내 저장은 실시간 알림을 기다리지 않고 화면에 바로 반영
-    const local = (c, id, v) => { const h = hubs[c]; if (!h) return; if (v == null) h.map.delete(id); else h.map.set(id, Object.assign({ id }, v)); h.emit(); };
-    return {
+    // [web] 한 값으로 걸러 보는 구독(예: 청소 기록의 날짜). 서버에서 그 값만 내려받아, 기록이 몇 달 쌓여도 첫 화면이 느려지지 않는다
+    const wheres = new Set;
+    const local = (c, id, v) => {
+      const h = hubs[c];
+      if (h) { if (v == null) h.map.delete(id); else h.map.set(id, Object.assign({ id }, v)); h.emit(); }
+      wheres.forEach(w => { if (w.c !== c) return; if (v != null && v[w.field] === w.value) { w.map.set(id, Object.assign({ id }, v)); w.emit(); } else if (w.map.delete(id)) w.emit(); });
+    };
+    const backend = {
       kind: "db",
       async add(c, data) { const id = newId(); const { error } = await sb.from(T).insert({ col: c, id, data }); if (error) throw fail(error); local(c, id, data); return id; },
       async set(c, id, data) { const { error } = await sb.from(T).upsert({ col: c, id, data }); if (error) throw fail(error); local(c, id, data); },
@@ -92,8 +98,38 @@
         if (h.ready) setTimeout(() => fn(Array.from(h.map.values())), 0);
         return () => { h.fns.delete(fn); if (onErr) h.errs.delete(onErr); };
       },
-      watchWhere(c, field, value, fn, onErr) { return this.watch(c, list => fn(list.filter(x => x[field] === value)), onErr); }
+      watchWhere(c, field, value, fn, onErr) {
+        if (!/^[a-zA-Z][a-zA-Z0-9]{0,30}$/.test(field) || typeof value !== "string") return this.watch(c, list => fn(list.filter(x => x[field] === value)), onErr);
+        const key = c + "|" + field + "=" + value;
+        const w = { c, field, value, map: new Map(), alive: true };
+        w.emit = () => { if (w.alive) { try { fn(Array.from(w.map.values())); } catch (e) {} } };
+        w.load = async () => {
+          const out = [];
+          for (let from = 0; ; from += 1000) {
+            const { data, error } = await sb.from(T).select("id,data").eq("col", c).eq("data->>" + field, value).range(from, from + 999);
+            if (error) throw fail(error, "불러오기");
+            out.push(...data.map(row));
+            if (data.length < 1000) break;
+          }
+          w.map = new Map(out.map(x => [x.id, x])); w.emit();
+        };
+        w.ch = sb.channel("ops:" + key + ":" + Math.random().toString(36).slice(2, 8))
+          .on("postgres_changes", { event: "*", schema: "public", table: T, filter: "col=eq." + c }, p => {
+            if (p.eventType === "DELETE") { const id = p.old && p.old.id; if (id && w.map.delete(id)) w.emit(); return; }
+            if (!p.new) return;
+            const x = row(p.new);
+            if (x[field] === value) { w.map.set(x.id, x); w.emit(); } else if (w.map.delete(x.id)) w.emit();
+          })
+          .subscribe(s => { connUpdate(key, s); if (s === "SUBSCRIBED") w.load().catch(fallback); if ((s === "CHANNEL_ERROR" || s === "TIMED_OUT") && onErr) onErr(new Error("실시간 연결이 끊겼습니다(" + s + ")")); });
+        wheres.add(w);
+        const stop = () => { w.alive = false; wheres.delete(w); delete chState[key]; try { sb.removeChannel(w.ch); } catch (e) {} };
+        // 서버에서 걸러 받기가 실패하면(예: 필터 미지원) 예전 방식(전체를 받아 화면에서 거르기)으로 바꿔 계속 보이게 한다
+        let off = null;
+        function fallback(e) { if (off) return; stop(); try { console.warn("watchWhere fallback", e && e.message); } catch (x) {} off = backend.watch(c, list => fn(list.filter(x => x[field] === value)), onErr); }
+        return () => { stop(); if (off) off(); };
+      }
     };
+    return backend;
   }
 
   if (!OPS.Store) throw new Error("store.js를 먼저 불러와야 합니다.");

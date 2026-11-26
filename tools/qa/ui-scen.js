@@ -134,18 +134,13 @@ async function step(id, fn) { if (process.env.ONLY && !new RegExp(process.env.ON
   // ===== C. 긴급 객실(이른 입실) =====
   await step('C1 프론트 우선 준비 걸기', async () => {
     await as('fo', '2026-12-02T08:30:00+09:00');
-    await openRoom('main-411'); const dt = await dlgText();
-    const inDlg = /우선 준비/.test(dt);
-    await closeDlg();
-    await menu('svc');
-    const row = cur.locator('.srow', { hasText: '본관 411' }).first();
-    await row.scrollIntoViewIfNeeded().catch(() => {});
-    if (!(await row.isVisible().catch(() => false))) { const sum = cur.locator('details.secd summary', { hasText: '퇴실 전' }).first(); if (await sum.count()) await tap(sum); }
-    await tap(row.locator('[data-svc="edit"]'));
-    await cur.fill('#pt-main-411', '12:00'); taps++;
-    await tap(row.locator('[data-svc="prio"]'));
+    await openRoom('main-411');
+    const inp = cur.locator('#dlg .lt input[type=time]').last();
+    const inDlg = await inp.count();
+    if (inDlg) { taps++; await inp.fill('12:00'); await tap(cur.locator('#dlg [data-svc="prio"]')); }
     const d = await svcDoc('main-411');
-    rec('C1 프론트 우선 준비 걸기', d && d.prio ? 'PASS' : 'FAIL', `객실 상세에 "우선 준비" 버튼 ${inDlg ? '있음' : '없음 → 청소·재실 목록까지 가야 함'}`);
+    rec('C1 프론트 우선 준비 걸기', d && d.prio && d.prio.time === '12:00' ? 'PASS' : 'FAIL', `객실 상세에서 우선 준비 ${inDlg ? '가능' : '불가'} · 저장 ${d && d.prio ? d.prio.time : '없음'}`);
+    await closeDlg();
   });
   await step('C2 키핑 목록 맨 위로 오는가', async () => {
     await as('hk', '2026-12-02T09:50:00+09:00');
@@ -191,7 +186,8 @@ async function step(id, fn) { if (process.env.ONLY && !new RegExp(process.env.ON
     await as('fo', '2026-12-03T08:00:00+09:00');
     const tile = await cur.locator('[data-room="main-418"]').first().innerText().catch(() => '');
     await openRoom('main-418'); const dt = await dlgText();
-    rec('E2 다음날: 전날 입실 가능 못 된 객실이 보이는가', /어제|전날|미완료|청소 안 됨/.test(tile + dt) ? 'PASS' : 'FAIL', `12/3 현황판 418: "${tile.replace(/\s+/g, ' ').slice(0, 40)}" — 전날 청소가 안 끝났다는 표시 없음(청소 기록이 날짜별 문서라 다음 날로 이어지지 않음)`);
+    await closeDlg(); await menu('svc'); const sv = await viewText(); await shot('E2-prev');
+    rec('E2 다음날: 전날 입실 가능 못 된 객실이 보이는가', /어제 미완료/.test(tile) && /입실 가능까지 못 간/.test(sv) ? 'PASS' : 'FAIL', `12/3 현황판 418: "${tile.replace(/\s+/g, ' ').slice(0, 40)}" · 청소·재실 경고 카드 ${/입실 가능까지 못 간/.test(sv) ? '있음' : '없음'}`);
   });
 
   // ===== 예외 =====

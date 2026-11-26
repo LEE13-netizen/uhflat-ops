@@ -387,3 +387,12 @@ ol.steps.mini{max-width:560px}
 .fb-reply{margin:6px 0 0;padding:8px 12px;border-radius:10px;background:var(--bg);font-size:14.5px}
 .fb-rep .fb-grow{flex:1 1 280px}.fb-rep .fb-grow input{width:100%;box-sizing:border-box}
 .svn.force{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+/* [web] 어제 입실 가능까지 못 간 퇴실 객실 */
+.card.prevc{border:2px solid var(--hot);background:var(--hot-bg)}
+.card.prevc h2{color:var(--hot)}
+.prevl{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.prevr{display:inline-flex;flex-direction:column;align-items:flex-start;min-width:74px;min-height:44px;padding:4px 10px;border:1.5px solid var(--hot);border-radius:10px;background:var(--card);color:var(--ink);cursor:pointer}
+.prevr b{font:700 16px "Barlow Semi Condensed","Noto Sans KR",sans-serif}.prevr span{font-size:12px;color:var(--muted)}
+.tf.prev{background:var(--warn);color:#fff}
+.card.prevn{border:1.5px dashed var(--line)}
+.prevnone{margin:6px 0}

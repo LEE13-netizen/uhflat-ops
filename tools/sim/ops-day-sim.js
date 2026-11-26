@@ -2,12 +2,18 @@
    가정: 만실 232실(본관 95 · 신관 137), 40% 금일 퇴실(전부 당일 입실), 나머지 재실(전체/일반 청소)
          프론트 7 · 키핑 25(룸메이드 20 · 인스펙터 3 · 하우스맨 2) · 시설 2
    각 직원 기기는 자기 화면 캐시를 갖고, 서버 반영·실시간 전달에 지연이 있다(휴대폰·와이파이).
-   실행: node tools/sim/ops-day-sim.js [shared|assigned] [seed]
+   실행: node tools/sim/ops-day-sim.js <배정> <시드> <정비 순서> <점검 순서> <상황>
+     배정: shared(지금: 동 전체 한 목록) | floor(층 균등 고정) | credit(작업량 균등 고정) | pull(시스템이 한 방씩 배정) | hybrid(작업량 균등 + 끝나면 도와주기)
+     정비 순서: outfirst(퇴실 먼저, 지금 hkSort) | window(재실 요청 시간이 끝나 가면 끼워 넣기)
+     점검 순서: fifo(동별 들어온 순서) | urgent(입실 시각 급한 순, 동 넘나듦)
+     상황: normal | stress(1명 결근 · 13시 2명 조퇴 · 오후 재실 요청 15건 추가)
    결과는 JSON 한 덩어리로 출력한다. 화면(DOM)은 돌리지 않는다. */
 process.env.TZ = "Asia/Seoul";
 const vm = require("vm"), fs = require("fs"), path = require("path");
-const MODE = process.argv[2] || "shared";           // shared: 지금처럼 모두가 같은 목록 / assigned: 룸메이드별 객실 배정
+const MODE = (process.argv[2] || "shared").replace("assigned", "floor");
 const SEED = +(process.argv[3] || 7);
+const SORT = process.argv[4] || "outfirst", INSP = process.argv[5] || "fifo", SCEN = process.argv[6] || "normal";
+const CLAIM = MODE === "pull" || MODE === "hybrid";   // 서버에서 "먼저 잡은 사람" 한 명만(설계안의 배정 잠금)
 const ROOT = path.join(__dirname, "..", "..");
 
 // ---------- 난수 ----------
@@ -103,23 +109,19 @@ const shuffled = rooms.slice().sort(() => rnd() - .5);
 const nOut = Math.round(rooms.length * 0.4);
 const outRooms = shuffled.slice(0, nOut), stayRooms = shuffled.slice(nOut);
 stayRooms.forEach((r, i) => { r.kind = i % 3 === 0 ? "전체재실" : "재실청소"; });
+outRooms.forEach(r => { r.out = true; });
 
 // ---------- 직원 ----------
 const FO = [], HK = [], INS = [], HM = [], FM = [];
 for (let i = 1; i <= 7; i++) FO.push(mkClient("FO" + i, "FO", "front", { from: i <= 5 ? at("07:00") : at("11:00") }));
-for (let i = 1; i <= 20; i++) HK.push(mkClient("RA" + i, "HK", "attendant", { b: i <= 8 ? "main" : "annex", free: at("08:30"), lunch: at(i % 2 ? "12:00" : "12:45") }));
-for (let i = 1; i <= 3; i++) INS.push(mkClient("IN" + i, "HK", "inspector", { b: i === 1 ? "main" : "annex", free: at("09:30") }));
+const NINS = +(process.env.INS_N || 3), NRA = 23 - NINS;   // 키핑 25 = 룸메이드 + 인스펙터 + 하우스맨 2
+for (let i = 1; i <= NRA; i++) HK.push(mkClient("RA" + i, "HK", "attendant", { b: i <= Math.round(NRA * 0.41) ? "main" : "annex", free: at("08:30"), lunch: at(i % 2 ? "12:00" : "12:45") }));
+for (let i = 1; i <= NINS; i++) INS.push(mkClient("IN" + i, "HK", "inspector", { b: i <= Math.max(1, Math.round(NINS * 0.41)) ? "main" : "annex", free: at("09:30") }));
 for (let i = 1; i <= 2; i++) HM.push(mkClient("HM" + i, "HK", "houseman", { free: at("08:00") }));
 for (let i = 1; i <= 2; i++) FM.push(mkClient("FM" + i, "FM", "facility", { free: at("08:00") }));
 HK.forEach((c, i) => { if (i % 10 === 3) c.net = 4; });   // 지하·계단실 등 약한 와이파이 기기
-// 배정 모드: 룸메이드별 담당 객실(층 단위)
-if (MODE === "assigned") {
-  ["main", "annex"].forEach(b => {
-    const ras = HK.filter(c => c.b === b), rs2 = rooms.filter(r => r.b === b).sort((a, c) => a.floor - c.floor || a.no.localeCompare(c.no));
-    rs2.forEach((r, i) => { r.ra = ras[Math.floor(i / Math.ceil(rs2.length / ras.length))].id; });
-  });
-}
-
+// 상황: 결근 1명(아침에 알고 배정에서 뺌), 13시 조퇴 2명
+if (SCEN === "stress") { HK[HK.length - 1].absent = true; HK[6].goneAt = at("13:00"); HK[14].goneAt = at("13:00"); }
 // ---------- 시나리오 ----------
 const room = id => rooms.find(r => r.id === id);
 const roomObj = r => ({ b: r.b, no: r.no, building: r.b === "main" ? "본관" : "신관" });
@@ -127,7 +129,7 @@ const foOn = () => FO.filter(c => NOW >= c.from);
 const foPick = () => { const on = foOn(); on.sort((a, b) => a.busyUntil - b.busyUntil || 0); return on.find(c => !(c.busyUntil > NOW)) || on[0]; };
 FO.forEach(c => { c.busyUntil = 0; });
 const foWork = (c, sec) => { c.busyMin += sec / 60; c.busyUntil = Math.max(c.busyUntil || 0, NOW) + sec * 1000; };
-const ST = { stillIn: 0, late: 0, prio: 0, express: 0, defects: 0, repairOverlap: [], dupStart: [], dupDeliv: 0, wastedWalkMin: 0, ackByOther: 0, hkBlinkSeen: 0, readyAt: {}, inspWait: [], foReqSec: 0, foStayReqN: 0, delivN: 0, delivWait: [] };
+const ST = { claimFail: 0, helped: 0, reassigned: 0, walkMin: 0, stillIn: 0, late: 0, prio: 0, express: 0, defects: 0, repairOverlap: [], dupStart: [], dupDeliv: 0, wastedWalkMin: 0, ackByOther: 0, hkBlinkSeen: 0, readyAt: {}, inspWait: [], foReqSec: 0, foStayReqN: 0, delivN: 0, delivWait: [] };
 
 // 1) 퇴실: 07:30~11:30, 10시~11시 몰림. 10% 레이트, 15%는 프론트 거치지 않고 나감(키핑이 확인)
 outRooms.forEach(r => {
@@ -152,6 +154,11 @@ stayRooms.forEach(r => {
     foWork(c, 40); ST.foReqSec += 40; ST.foStayReqN++;
   });
 });
+if (SCEN === "stress") stayRooms.filter(r => r.refuse).slice(0, 15).forEach(r => {   // 아침에 거절했다가 오후에 요청
+  const t = at("13:00") + rnd() * 120 * MIN, f = new Date(t).getHours() + 1;
+  r.win = [String(f).padStart(2, "0") + ":00", String(f + 2).padStart(2, "0") + ":00"]; r.refuse = false; r.lateReq = true;
+  push(t, async () => { const c = foPick(); await act(c, () => OPS.Svc.request(DATE, r.id, svcOf(c, r.id), c.actor, { from: r.win[0], to: r.win[1], kinds: ["정비"], memo: "" }), ["done"]); foWork(c, 40); });
+});
 // 3) 불출: 07~18시 60건(오전·오후 몰림). 하우스맨 + 쉬는 룸메이드가 "가는 중"
 for (let i = 0; i < 60; i++) {
   const r = pick(stayRooms.concat(outRooms)), t = at("07:00") + (rnd() < .5 ? norm(150, 60) : norm(540, 80)) * MIN;
@@ -159,59 +166,100 @@ for (let i = 0; i < 60; i++) {
 }
 
 // ---------- 키핑 행동 ----------
-const inspQ = [];
-function hkNext(c) {   // 룸메이드가 다음에 할 객실을 자기 화면(캐시) 기준으로 고른다
-  const svc = id => { const v = cget(c, "roomSvc").get(OPS.Svc.sid(DATE, id)); return v || {}; };
-  const mine = MODE === "assigned" ? rooms.filter(r => r.ra === c.id) : rooms.filter(r => r.b === c.b);
-  const cand = [];
-  mine.forEach(r => {
-    const s = svc(r.id);
-    if (r.mine === c.id || (c.skip && c.skip.has(r.id))) return;   // 이미 한 방, 가 보니 다른 사람이 하던 방
-    if (outRooms.includes(r)) { if ((s.co) && !s.start && !s.done && !s.cleaned) cand.push({ r, rank: s.prio ? 0 : 1, key: s.prio ? s.prio.at : s.co.at }); }
-    else if (s.reply && s.reply.type === "time" && !s.done && !s.start2) {
-      const w = OPS.Svc.windowStart(s.reply.window); if (NOW >= T0 + (w - 7 * 60) * MIN) cand.push({ r, rank: 2, key: w });
-    }
+const credit = r => r.out ? 1 : r.kind === "전체재실" ? 0.75 : 0.35;
+const expCredit = r => r.out ? 1 : credit(r) * 0.85;      // 배정할 때(08:20)는 재실 요청을 아직 다 모른다
+const byFloor = (a, c) => a.floor - c.floor || a.no.localeCompare(c.no);
+const inspQ = [], claimSrv = new Map();
+function plan() {   // 08:20 아침 배정(인스펙터·부서장). 결근자는 뺀다
+  if (!["floor", "credit", "hybrid"].includes(MODE)) return;
+  ["main", "annex"].forEach(b => {
+    const ras = HK.filter(c => c.b === b && !c.absent), rs2 = rooms.filter(r => r.b === b).sort(byFloor);
+    if (MODE === "floor") { rs2.forEach((r, i) => { r.ra = ras[Math.floor(i / Math.ceil(rs2.length / ras.length))].id; }); return; }
+    const tot = rs2.reduce((x, r) => x + expCredit(r), 0), tgt = tot / ras.length; let k = 0, acc = 0;
+    rs2.forEach(r => { if (acc >= tgt * (k + 1) && k < ras.length - 1) k++; r.ra = ras[k].id; acc += expCredit(r); });
   });
-  // 퇴실 전 객실 중 손님이 이미 나간 곳(키핑이 문 두드려 확인): 할 일이 없을 때
-  if (!cand.length) mine.forEach(r => { const s = svc(r.id); if (outRooms.includes(r) && !s.co && !r.checkedByHk && r.express && NOW > r.leave) cand.push({ r, rank: 3, key: 0, express: true }); });
-  if (!cand.length) mine.forEach(r => { const s = svc(r.id); if (outRooms.includes(r) && !s.co && !r.checkedByHk && !r.late && NOW > at("10:30")) cand.push({ r, rank: 4, key: 0, knock: true }); });
-  cand.sort((a, b) => a.rank - b.rank || a.key - b.key);
-  return cand[0];
+}
+const remainOf = id => rooms.filter(r => r.ra === id && !r.finished && r.busy !== id).reduce((x, r) => x + credit(r), 0);
+function reassignOrphans() {   // 고정 배정 방식: 14:30에 부서장이 알아차리고 손으로 다시 나눈다(시스템 도움 없음)
+  rooms.forEach(r => { const o = HK.find(c => c.id === r.ra); if (o && (o.absent || (o.goneAt && NOW >= o.goneAt)) && !r.finished) {
+    const pool = HK.filter(c => c.b === r.b && !c.absent && !(c.goneAt && NOW >= c.goneAt)).sort((a, c) => remainOf(a.id) - remainOf(c.id)); if (pool[0]) { r.ra = pool[0].id; ST.reassigned++; } } });
+}
+function ready(c, r, s) {   // 이 사람 화면(캐시)에서 지금 할 수 있는 방인가 + 순서 값
+  if (r.finished || r.mine === c.id || (c.skip && c.skip.has(r.id))) return null;
+  if (CLAIM && c.seenClaim && c.seenClaim.get(r.id) && c.seenClaim.get(r.id) !== c.id) return null;
+  if (r.out) {
+    if (!s.co || s.start || s.cleaned || s.done) return null;
+    return { rank: s.prio ? 0 : 1, key: s.prio ? OPS.Svc.windowStart(s.prio.time) : s.co.at / MIN };
+  }
+  if (!(s.reply && s.reply.type === "time") || s.done || s.start) return null;
+  const w0 = OPS.Svc.windowStart(s.reply.window), w1 = OPS.Svc.windowStart((s.reply.window || "").split("~")[1] || "");
+  const nowMin = (NOW - T0) / MIN + 7 * 60;
+  if (nowMin < w0) return null;
+  if (SORT === "window" && w1 - nowMin <= 50) return { rank: 0.5, key: w1 };   // 요청 시간이 50분 안에 끝나면 퇴실보다 먼저
+  if (SORT === "smart" && w1 - nowMin <= 50 && NOW < at("13:00")) return { rank: 0.5, key: w1 };   // 13시 전까지만 끼워 넣고, 그 뒤는 15시 입실 우선
+  return { rank: 2, key: w0 };
+}
+function hkNext(c) {
+  const svc = id => cget(c, "roomSvc").get(OPS.Svc.sid(DATE, id)) || {};
+  const live = x => !x.absent && !(x.goneAt && NOW >= x.goneAt);
+  let pool = MODE === "shared" || MODE === "pull" ? rooms.filter(r => r.b === c.b) : rooms.filter(r => r.ra === c.id);
+  const pickFrom = list => { const cand = []; list.forEach(r => { const v = ready(c, r, svc(r.id)); if (v) cand.push(Object.assign({ r }, v)); });
+    cand.sort((a, b) => a.rank - b.rank || a.key - b.key || Math.abs(a.r.floor - c.floor) - Math.abs(b.r.floor - c.floor)); return cand[0]; };
+  let n = pickFrom(pool);
+  if (!n && MODE === "hybrid") {   // 도와주기 전에 내 구역 퇴실 전 객실부터 확인(손님이 프론트를 안 거치고 나간 방)
+    const k = pool.find(r => { const s = svc(r.id); return r.out && !s.co && !r.checkedByHk && !r.late && ((r.express && NOW > r.leave) || NOW > at("10:30")); });
+    if (k) return { r: k, knock: true };
+  }
+  if (!n && MODE === "hybrid") {   // 내 방이 없으면 도와주기: 가장 밀린 동료(또는 조퇴·결근자)의 방
+    const behind = HK.filter(x => x.b === c.b && x !== c).map(x => ({ x, rem: live(x) ? remainOf(x.id) : 99 })).sort((a, b) => b.rem - a.rem);
+    for (const { x, rem } of behind) { if (rem < 1.2) break; n = pickFrom(rooms.filter(r => r.ra === x.id)); if (n) { n.help = true; break; } }
+  }
+  if (!n) {   // 퇴실 전 객실 확인(손님이 먼저 나간 방 / 10:30 넘어 두드려 보기) — 내 구역(공유·시스템 배정은 동 전체)
+    const mineList = MODE === "shared" || MODE === "pull" || MODE === "hybrid" && !pool.length ? rooms.filter(r => r.b === c.b) : pool;
+    const k = mineList.find(r => { const s = svc(r.id); return r.out && !s.co && !r.checkedByHk && !r.late && ((r.express && NOW > r.leave) || NOW > at("10:30")); });
+    if (k) return { r: k, knock: true };
+  }
+  return n;
 }
 async function hkLoop(c) {
-  if (NOW >= at("17:30")) return;
+  if (NOW >= at("17:30") || c.absent || (c.goneAt && NOW >= c.goneAt)) { c.endAt = c.endAt || NOW; return; }
   if (c.lunch && NOW >= c.lunch && !c.ate) { c.ate = true; push(NOW + 45 * MIN, () => hkLoop(c)); return; }
-  if (rnd() < 0.03) { c.offUntil = NOW + (30 + rnd() * 90) * 1000; push(c.offUntil, () => reload(c)); }   // 엘리베이터·계단: 잠깐 끊김
+  if (rnd() < 0.03) { c.offUntil = NOW + (30 + rnd() * 90) * 1000; push(c.offUntil, () => reload(c)); }
   const n = hkNext(c);
-  if (!n) { push(NOW + 4 * MIN, () => hkLoop(c)); return; }
-  const r = n.r, walk = 2 + rnd() * 3;
-  if (n.knock || n.express) {
+  if (!n) { c.idle = (c.idle || 0) + 4; push(NOW + 4 * MIN, () => hkLoop(c)); return; }
+  const r = n.r;
+  if (CLAIM && !n.knock) {   // 배정 잠금: 서버에서 먼저 잡은 사람만. 진 사람은 바로 다른 방
+    const owner = claimSrv.get(r.id);
+    if (owner && owner !== c.id) { ST.claimFail++; (c.seenClaim = c.seenClaim || new Map()).set(r.id, owner); push(NOW + 0.1 * MIN, () => hkLoop(c)); return; }
+    claimSrv.set(r.id, c.id); clients.forEach(x => push(NOW + logn(300 * x.net, 2500 * x.net), () => { (x.seenClaim = x.seenClaim || new Map()).set(r.id, c.id); }));
+  }
+  const walk = 1.2 + 0.5 * Math.abs(r.floor - (c.floor || r.floor)) + rnd() * 1.5 + (n.help ? 1 : 0);
+  ST.walkMin += walk;
+  if (n.knock) {
     r.checkedByHk = true;
     push(NOW + walk * MIN, async () => {
-      if (NOW >= r.leave) { ST.express += n.express ? 1 : 0; await act(c, () => OPS.Svc.hkCheckout(DATE, r.id, svcOf(c, r.id), c.actor, roomObj(r), false)); }
+      c.floor = r.floor;
+      if (NOW >= r.leave) { ST.express++; await act(c, () => OPS.Svc.hkCheckout(DATE, r.id, svcOf(c, r.id), c.actor, roomObj(r), false)); }
       else { ST.stillIn++; await act(c, () => OPS.Svc.stillIn(DATE, r.id, svcOf(c, r.id), c.actor)); r.checkedByHk = false; }
       hkLoop(c);
     });
     return;
   }
-  // 도착해서 시작 누름 — 같은 방을 다른 사람이 먼저 시작했는지(서버 기준) 확인
   push(NOW + walk * MIN, async () => {
-    const s = truth(r.id), isOut = outRooms.includes(r);
-    const startedBy = isOut ? s.start && s.start.uid : r.stayBy;
-    if (startedBy && startedBy !== c.id) { ST.dupStart.push({ t: hm(NOW), room: r.no, a: startedBy, b: c.id }); ST.wastedWalkMin += walk + 2; (c.skip = c.skip || new Set()).add(r.id); hkLoop(c); return; }
-    if (isOut) await act(c, () => OPS.Svc.start(DATE, r.id, svcOf(c, r.id), c.actor)); else { r.stayBy = c.id; if (OPS.Svc.hkNeedsAck({ type: "stay", s: svcOf(c, r.id) || {} })) await act(c, () => OPS.Svc.ack(DATE, r.id, svcOf(c, r.id), c.actor)); }
-    r.mine = c.id;
-    const dur = isOut ? Math.max(22, norm(35, 7)) : r.kind === "전체재실" ? Math.max(15, norm(26, 5)) : Math.max(6, norm(12, 3));
+    c.floor = r.floor;
+    if (r.busy && r.busy !== c.id) { ST.dupStart.push({ t: hm(NOW), room: r.no, a: r.busy, b: c.id }); ST.wastedWalkMin += walk + 2; (c.skip = c.skip || new Set()).add(r.id); hkLoop(c); return; }
+    r.busy = c.id;
+    await act(c, () => OPS.Svc.start(DATE, r.id, svcOf(c, r.id), c.actor));   // 설계안: 재실도 "청소 시작"
+    if (n.help) ST.helped++;
+    const dur = r.out ? Math.max(22, norm(35, 7)) : r.kind === "전체재실" ? Math.max(15, norm(26, 5)) : Math.max(6, norm(12, 3));
     push(NOW + dur * MIN, async () => {
-      if (isOut) {
-        if (rnd() < 0.08) {   // 결함 발견 → 시설 업무
-          ST.defects++;
-          const t = await act(c, () => OPS.Core.createTask({ kind: "repair", title: pick(["욕실 배수 막힘", "에어컨 안 켜짐", "전등 나감", "도어락 배터리"]), room: r.no, building: r.b, roomId: r.id, toDept: "FM", priority: "주의" }, c.actor));
-          if (t) { r.repair = { id: t.id, at: NOW }; FMQ.push(r); }
-        }
+      if (r.out) {
+        if (rnd() < 0.08) { ST.defects++; const t = await act(c, () => OPS.Core.createTask({ kind: "repair", title: "객실 결함", room: r.no, building: r.b, roomId: r.id, toDept: "FM", priority: "주의" }, c.actor)); if (t) { r.repair = { id: t.id, at: NOW }; FMQ.push(r); } }
         await act(c, () => OPS.Svc.cleaned(DATE, r.id, svcOf(c, r.id), c.actor));
         inspQ.push({ r, at: NOW });
-      } else await act(c, () => OPS.Svc.done(DATE, r.id, svcOf(c, r.id), c.actor, 2, 2));
+      } else { await act(c, () => OPS.Svc.done(DATE, r.id, svcOf(c, r.id), c.actor, 2, 2)); }
+      r.finished = true; r.busy = null; r.finishedAt = NOW; r.mine = c.id;
+      c.credits = (c.credits || 0) + credit(r); c.lastDone = NOW;
       hkLoop(c);
     });
   });
@@ -221,12 +269,16 @@ async function reload(c) { // 다시 연결되면 모음 전체를 다시 불러
 }
 async function inspLoop(c) {
   if (NOW >= at("18:00")) return;
-  const i = inspQ.findIndex(q => q.r.b === c.b) >= 0 ? inspQ.findIndex(q => q.r.b === c.b) : inspQ.findIndex(() => true);
+  let i;
+  if (INSP === "urgent") {   // 입실 시각 급한 순(우선 준비 → 나머지), 같으면 오래 기다린 순, 동 넘나듦
+    const key = q => (q.r.prio ? q.r.prio : at("15:00")) + (q.r.b === c.b ? 0 : 3 * MIN);
+    i = inspQ.length ? inspQ.reduce((bi, q, j) => key(q) < key(inspQ[bi]) || (key(q) === key(inspQ[bi]) && q.at < inspQ[bi].at) ? j : bi, 0) : -1;
+  } else { i = inspQ.findIndex(q => q.r.b === c.b); if (i < 0) i = inspQ.length ? 0 : -1; }
   if (i < 0) { push(NOW + 3 * MIN, () => inspLoop(c)); return; }
   const q = inspQ.splice(i, 1)[0];
   ST.inspWait.push((NOW - q.at) / MIN);
-  push(NOW + (2 + rnd() * 3 + Math.max(3, norm(6, 2))) * MIN, async () => {
-    if (q.r.repair && !q.r.repair.fixed) ST.repairOverlap.push(q.r.no);   // 시스템이 막지 않는다: 수리 중인데 입실 가능
+  push(NOW + (2 + rnd() * 3 + (q.r.b === c.b ? 0 : 3) + Math.max(3, norm(6, 2))) * MIN, async () => {
+    if (q.r.repair && !q.r.repair.fixed) ST.repairOverlap.push(q.r.no);
     await act(c, () => OPS.Svc.done(DATE, q.r.id, svcOf(c, q.r.id), c.actor, 2, 2));
     ST.readyAt[q.r.id] = NOW;
     inspLoop(c);
@@ -273,6 +325,8 @@ function blinkAudit() {
   if (NOW < at("17:00")) push(NOW + 10 * MIN, blinkAudit);
 }
 
+push(at("08:20"), plan);
+if (["floor", "credit"].includes(MODE) && SCEN === "stress") push(at("14:30"), reassignOrphans);
 HK.forEach(c => push(c.free, () => hkLoop(c)));
 INS.forEach(c => push(c.free, () => inspLoop(c)));
 HM.forEach(c => push(c.free, () => hmLoop(c)));
@@ -295,6 +349,10 @@ push(at("09:00"), blinkAudit);
   const prioMiss = outRooms.filter(r => r.prio && !(ST.readyAt[r.id] <= r.prio)).length;
   const stayDone = stayRooms.filter(r => (truth(r.id).done)).length, stayWant = stayRooms.filter(r => !r.refuse).length;
   const stayLate = stayRooms.filter(r => !r.refuse && truth(r.id).done && truth(r.id).done.at > at(r.win[1])).length;
+  const stayNot = stayRooms.filter(r => !r.refuse && !truth(r.id).done).length;
+  const work = HK.filter(c => !c.absent), cr = work.map(c => c.credits || 0), mean = cr.reduce((x, y) => x + y, 0) / cr.length;
+  const crSd = Math.sqrt(cr.reduce((x, y) => x + (y - mean) ** 2, 0) / cr.length);
+  const lastDone = work.filter(c => !c.goneAt).map(c => c.lastDone || 0).filter(Boolean);
   const logFull = Array.from(col("roomSvc").values()).filter(d => (d.log || []).length >= 12).length;
   const peakPerClient = Math.max(...clients.map(c => Math.max(0, ...Object.values(c.peak))));
   const avg = a => a.length ? +(a.reduce((x, y) => x + y, 0) / a.length).toFixed(1) : 0;
@@ -304,7 +362,10 @@ push(at("09:00"), blinkAudit);
     mode: MODE, seed: SEED, rooms: rooms.length, checkout: outRooms.length, stay: stayRooms.length,
     staff: { FO: FO.length, RA: HK.length, INS: INS.length, HM: HM.length, FM: FM.length },
     readiness: { firstReady: ready.length ? hm(ready[0]) : "-", lastReady: ready.length ? hm(ready[ready.length - 1]) : "-", readyBy15: outRooms.length - notReady15, notReadyBy15: notReady15, prioRooms: 12, prioMissed: prioMiss, inspWaitAvgMin: avg(ST.inspWait), inspWaitP90Min: p90(ST.inspWait) },
-    stays: { wanted: stayWant, refused: stayRooms.length - stayWant, done: stayDone, doneAfterWindow: stayLate },
+    stays: { wanted: stayWant, refused: stayRooms.length - stayWant, done: stayDone, doneAfterWindow: stayLate, notDone: stayNot },
+    options: { sort: SORT, insp: INSP, scen: SCEN },
+    outFlow: { coAvg: hm(T0 + outRooms.reduce((x, r) => x + ((truth(r.id).co || {}).at || T0) - T0, 0) / outRooms.length), startAfterCoAvgMin: Math.round(outRooms.reduce((x, r) => { const t = truth(r.id); return x + (t.start && t.co ? (t.start.at - t.co.at) / MIN : 0); }, 0) / outRooms.length), cleanedBy14: outRooms.filter(r => (truth(r.id).cleaned || {}).at <= at("14:00")).length, stayDoneBy13: stayRooms.filter(r => (truth(r.id).done || {}).at <= at("13:00")).length },
+    balance: { creditSd: +crSd.toFixed(2), creditMin: +Math.min(...cr).toFixed(2), creditMax: +Math.max(...cr).toFixed(2), idleAvgMin: Math.round(work.reduce((x, c) => x + (c.idle || 0), 0) / work.length), lastDoneEarliest: hm(Math.min(...lastDone)), lastDoneLatest: hm(Math.max(...lastDone)), walkMin: Math.round(ST.walkMin), claimFail: ST.claimFail, helped: ST.helped, reassigned: ST.reassigned },
     front: { stayRequestsTyped: ST.foStayReqN, stayRequestTypingMin: Math.round(ST.foReqSec / 60), busyMinPerPerson: FO.map(c => Math.round(c.busyMin)), lateSet: ST.late, prioSet: ST.prio, deliveriesAsked: ST.delivN },
     housekeeping: { duplicateStarts: ST.dupStart.length, dupExamples: ST.dupStart.slice(0, 5), wastedWalkMin: Math.round(ST.wastedWalkMin), stillInVisits: ST.stillIn, hkConfirmedCheckout: ST.express, blinkRowViews: ST.hkBlinkSeen },
     deliveries: { requests: ST.delivN, doubleHandled: ST.dupDeliv, waitAvgMin: avg(ST.delivWait), waitP90Min: p90(ST.delivWait) },

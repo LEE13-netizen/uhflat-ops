@@ -242,3 +242,8 @@ body .task.need{border:2px solid var(--hot);animation:opsNeed 1s ease-in-out inf
 .arep b{margin-left:4px}
 .rhwarn{margin:4px 0 8px;padding:8px 12px;border-radius:8px;background:var(--warn-bg);color:var(--warn);font-weight:600;font-size:14.5px}
 .rhist .rhl{cursor:pointer}.rhist .rhl:hover{text-decoration:underline}
+/* [web] 넘어온 것 · 며칠째 · 인수 확인 */
+.carry{display:inline-block;margin-right:6px;padding:1px 7px;border-radius:6px;font-size:12px;font-weight:700;background:var(--accent-bg);color:var(--accent);vertical-align:1px}
+.carry.old{background:var(--warn-bg);color:var(--warn)}
+.card.carryc{border-left:6px solid var(--warn)}
+.hol{margin:-4px 0 10px;color:var(--ok);font-weight:600}

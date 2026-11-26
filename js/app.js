@@ -39,7 +39,7 @@
     bMode: "grid", pb: null, pFloor: {}, zoom: null, drag: null,
     notes: {}, openRoomId: null, backRoom: null, noteEdit: null, prefill: null, bNeed: false,
     rdate: OPS.ymd(Date.now()), rq: "", rb: "all", rOnly: true, rHide: true, rMsg: "",
-    hf: "all", sendType: "", sendPicked: false,          // [web] 작업대: 종류 거르기, 보내기 종류
+    hf: "all", sendType: "", sendPicked: false, today: OPS.ymd(Date.now()), delivAll: [], stockAll: [], handoffs: [],          // [web] 작업대: 종류 거르기, 보내기 종류
     ak: "issue", ap: "30", as: "all", ac: "", aq: "", aMore: false   // [web] 보관함: 종류·기간·상태·분류·찾기
   };
   // [web] 웹 로그인: 허용된 부서만(프로그램 관리자 = 모든 부서)
@@ -166,7 +166,7 @@
     const need = Core.needsAck(t, role);
     return `<div class="task ${t.priority === "긴급" && Core.isOpen(t) ? "hot" : ""} ${need ? "need" : ""}" tabindex="0" data-open="${esc(t.id)}">
       <span class="room ${t.room ? "" : "none"}">${t.room ? (bTag(t) ? `<small>${esc(bTag(t))}</small>` : "") + esc(t.room) : "위치<br>없음"}</span>
-      <span class="t">${need ? `<span class="unread">확인 필요</span> ` : ""}<span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${esc(t.title)}</span>
+      <span class="t">${need ? `<span class="unread">확인 필요</span> ` : ""}<span class="pri ${esc(t.priority)}">${esc(t.priority)}</span>${Core.isOpen(t) ? carryChip(t.createdAt) : ""}${esc(t.title)}</span>
       ${go}
       <span class="meta">${esc(OPS.kindName(t.kind))} · ${esc(OPS.deptName(t.fromDept))} → ${esc(OPS.deptName(t.toDept))} · <span class="st">${esc(t.status)}</span> · ${esc(nameOf(t.createdUid, t.createdBy !== "(이름 없음)" ? t.createdBy : "") || "(이름 없음)")} ${esc(ago(t.createdAt))}${late ? ` · <span class="late">기한 초과</span>` : ""}${readChip(t, st.events, role) ? " · " + readChip(t, st.events, role) : ""}</span>
     </div>`;
@@ -185,6 +185,30 @@
   const bTag = t => (multiB() && t.building ? ((st.master.buildings.find(b => b.id === t.building) || {}).name || "") : "");
   const listHtml = (arr, role, empty) => arr.length ? `<div class="list">${Core.sort(arr).map(t => taskRow(t, role)).join("")}</div>` : `<div class="empty">${esc(empty)}</div>`;
 
+  // ---------- [web] 날짜 경계: 자정으로 자르지 않는다 ----------
+  // 24시간 운영이라 시계로 선을 긋지 않는다. 근무를 넘겨받는 순간("인수 확인")이 경계다.
+  // 누르기 전까지는 앞 근무의 일. 아무도 안 눌렀을 때만 근무 시작 시각(주간·야간 시작)을 기준으로 "넘어온 것"을 보여 준다.
+  const COL_HO = "handoffs";
+  function dayFilter() {
+    const t = st.today = OPS.ymd(Date.now());
+    st.deliv = (st.delivAll || []).filter(d => d.date === t || OPS.Desk.isOpen(d));
+    const o = {}; (st.stockAll || []).filter(x => x.date === t).forEach(x => { o[x.b] = x; }); st.stock = o;
+  }
+  const hm2m = v => { const m = /^(\d{1,2}):(\d{2})$/.exec(v || ""); return m ? +m[1] * 60 + +m[2] : null; };
+  // 그 시각(HH:MM)이 now 이전에 마지막으로 지나간 순간
+  function lastClock(hhmm, now) {
+    const mm = hm2m(hhmm); if (mm == null) return 0;
+    const d = new Date(now); d.setHours(Math.floor(mm / 60), mm % 60, 0, 0);
+    if (d.getTime() > now) d.setDate(d.getDate() - 1);
+    return d.getTime();
+  }
+  // 지금 근무가 시작된 순간(주간 시작·야간 시작 중 더 최근)
+  const shiftStart = (now = Date.now()) => Math.max(lastClock(OPS.CTX.dayStart, now), lastClock(OPS.CTX.nightStart, now));
+  // 며칠째: 주간 시작 시각을 몇 번 넘겼는가 + 1 (자정이 아니라 근무일 기준)
+  const carryDays = (at, now = Date.now()) => at ? Math.max(1, Math.round((lastClock(OPS.CTX.dayStart, now) - lastClock(OPS.CTX.dayStart, at)) / 864e5) + 1) : 1;
+  const carryChip = at => { const n = carryDays(at); return n >= 2 ? `<span class="carry ${n >= 3 ? "old" : ""}" title="근무일 기준 ${n}일째 열려 있습니다">${n}일째</span>` : ""; };
+  // 우리 부서가 이번 근무에서 인수 확인을 했는가
+  const myHandoff = (dept, since) => (st.handoffs || []).filter(h => h.dept === dept && h.at >= since).sort((a, b) => b.at - a.at)[0] || null;
   // ---------- [web] 작업대: 모든 업무를 처리하는 한 곳 ----------
   // 업무 카드(tasks)와 불출(deliveries)을 같은 목록으로 본다. 저장 형식은 그대로 두고 화면에서만 맞춘다(DB 변경 없음).
   // 끝난 카드는 보관함으로 간다(보관함은 보기·찾기 전용).
@@ -236,6 +260,19 @@
     if (!h || h === cur || st.sendPicked || !sendTypes().some(x => x.id === h)) { el.innerHTML = ""; return; }
     el.innerHTML = `추천: <button type="button" class="btn sm" data-send="${h}">${esc((SEND_TYPES.find(x => x.id === h) || {}).name)}(으)로 보내기</button>`;
   }
+  // [web] 인수 확인: 넘어온 것을 이 부서가 넘겨받았다는 기록(누가·언제·몇 건). 넘어온 업무는 함께 확인 처리한다
+  async function handoff() {
+    const r = st.role, a = actor(), S0 = shiftStart(), P = hubParts(r);
+    const old = x => (x.createdAt || x.at || 0) < S0;
+    const ts = P.todoT.filter(old), ds = P.todoD.filter(old);
+    try {
+      await Store.add(COL_HO, { dept: r, at: Date.now(), shiftStart: S0, by: a.name || "", uid: a.uid || "", role: r, propertyId: OPS.CTX.propertyId,
+        items: ts.map(t => ({ t: "task", id: t.id, days: carryDays(t.createdAt) })).concat(ds.map(d => ({ t: "deliv", id: d.id, days: carryDays(d.at) }))) });
+      for (const t of ts) { if (Core.needsAck(t, r)) { try { await Core.ack(t, a); } catch (e) {} } }
+      flash(OPS.deptName(r) + " 인수 확인을 남겼습니다(" + (ts.length + ds.length) + "건).");
+    } catch (e) { flash("인수 확인 실패: " + (e && e.message || e)); }
+    render();
+  }
   function hubCount(r) {
     const P = hubParts(r);
     return st.tasks.filter(t => Core.needsAck(t, r)).length + (r === "HK" ? P.todoD.filter(d => !d.go).length : r === "FO" ? P.todoD.length : 0);
@@ -248,16 +285,28 @@
       .concat(okD() ? ds.map(d => ({ hot: d.urgent ? 0 : 1, at: d.at, h: `<div class="hubd">${delivRow(d)}</div>` })) : [])
       .sort((a, b) => a.hot - b.hot || a.at - b.at);
     const box = (arr, empty) => arr.length ? `<div class="list">${arr.map(x => x.h).join("")}</div>` : `<div class="empty">${esc(empty)}</div>`;
-    const todo = merge(P.todoT, P.todoD), conf = merge(P.confirmT, []), sent = merge(P.sentT, P.sentD, true);
+    // [web] 넘어온 것: 이번 근무 시작 전에 생겨 아직 안 끝난 것. 인수 확인 전에는 위에 따로 모으고 아래 목록에서는 뺀다(한 건은 한 곳에)
+    const S0 = shiftStart(), ho = mgr ? null : myHandoff(r, S0);
+    const old = x => (x.createdAt || x.at || 0) < S0;
+    const carT = !mgr && !ho ? P.todoT.filter(old) : [], carD = !mgr && !ho ? P.todoD.filter(old) : [];
+    const carried = merge(carT, carD);
+    const todo = merge(P.todoT.filter(t => !carT.includes(t)), P.todoD.filter(d => !carD.includes(d))), conf = merge(P.confirmT, []), sent = merge(P.sentT, P.sentD, true);
+    const longT = mgr ? Core.sort(st.tasks.filter(t => Core.isOpen(t) && carryDays(t.createdAt) >= 3)) : [];
     const cnt = k => (k === "all" ? P.todoT.length + P.todoD.length : k === "deliv" ? P.todoD.length : P.todoT.filter(t => hubKind(t) === k).length);
     const chips = `<div class="chips hubf">${HUB_FILTERS.filter(([k]) => k !== "deliv" || r === "HK" || r === "FO" || mgr).map(([k, n]) => `<button type="button" data-hf="${k}" aria-pressed="${f === k}">${esc(n)}${cnt(k) ? ` <b>${cnt(k)}</b>` : ""}</button>`).join("")}</div>`;
     const stChips = `<div class="chips" id="chips">${[["open", "처리할 것"], ["hold", "보류"], ["done", "최근 24시간 완료"]].map(([k, n]) => `<button type="button" data-filter="${k}" aria-pressed="${st.filter === k}">${n}</button>`).join("")}</div>`;
     const todoTitle = mgr ? "열린 업무 전체" : r === "FO" ? "우리 부서가 할 것" : "받은 것";
     const todoSub = mgr ? "모든 부서의 열린 업무와 진행 중 불출입니다." : r === "FO" ? "프론트로 온 업무와, 키핑이 \"못 함\"으로 돌려보낸 불출입니다. 손님께 다시 안내하십시오." : r === "HK" ? "키핑으로 온 업무와 불출입니다. 깜빡이는 줄은 아직 확인 안 한 것입니다." : OPS.deptName(r) + "로 온 업무입니다.";
+    const carryCard = carried.length ? `<section class="card carryc"><h2>넘어온 것 <span class="c">${carried.length}</span></h2>
+        <p class="sub">${esc(hm(S0))} 근무 시작 전에 생겨 아직 안 끝난 것입니다. 훑어보고 <b>인수 확인</b>을 누르면 누가 넘겨받았는지 남고, 아래 목록으로 내려갑니다.</p>
+        ${box(carried, "")}<div class="acts"><button type="button" class="btn main" data-handoff="1">${esc(OPS.deptName(r))} 인수 확인 (${carried.length}건)</button></div></section>` : "";
+    const hoLine = ho ? `<p class="sub hol">인수 확인 ${esc(hm(ho.at))} · ${esc(nameOf(ho.uid, ho.by) || ho.by || "")} · 넘겨받은 ${ho.items ? ho.items.length : 0}건</p>` : "";
+    const longCard = longT.length ? `<section class="card carryc"><h2>오래 넘어간 것 <span class="c">${longT.length}</span></h2><p class="sub">근무일 기준 3일 넘게 열린 업무입니다. 보류 이유를 적거나, 담당을 바꾸거나, 취소할지 정해 주십시오.</p>${listHtml(longT, r, "")}</section>` : "";
     return `<div class="cols hub"><div>
+      ${carryCard}${longCard}
       ${sendCard()}
       ${conf.length ? `<section class="card"><h2>완료 확인 <span class="c">${conf.length}</span></h2><p class="sub">다른 부서가 처리를 마쳤다고 보고했습니다. 확인하면 완료되어 보관함으로 갑니다.</p>${box(conf, "")}</section>` : ""}
-      <section class="card"><h2>${esc(todoTitle)} <span class="c">${P.todoT.length + P.todoD.length}</span></h2><p class="sub">${esc(todoSub)} 긴급 먼저, 오래된 것 먼저.</p>
+      <section class="card"><h2>${esc(todoTitle)} <span class="c">${P.todoT.length + P.todoD.length}</span></h2><p class="sub">${esc(todoSub)} 긴급 먼저, 오래된 것 먼저.</p>${hoLine}
         ${chips}${stChips}${box(todo, st.filter === "open" ? "지금 처리할 것이 없습니다." : "해당하는 것이 없습니다.")}</section>
     </div><div>
       ${mgr ? mgrTable() : `<section class="card"><h2>보낸 것 <span class="c">${sent.length}</span></h2><p class="sub">다른 부서에서 처리 중입니다. 끝나면 보관함으로 갑니다.</p>${box(sent, "다른 부서로 보낸 진행 중인 것이 없습니다.")}</section>`}
@@ -1000,9 +1049,9 @@
     const lbl = x => (multiB() ? (x.building || "") + " " : "") + x.no;
       const stt = D.status(d), age = mins(d.at), slow = D.isOpen(d) && age >= 30;
       return `<div class="srow ${D.isOpen(d) && hk && !d.go ? "pend" : ""}">
-        <div class="sh"><b class="sn">${esc(lbl(d))}</b><span class="chip ${D_CLS[stt] || ""}">${esc(stt)}</span>${d.urgent ? `<span class="chip warn">긴급</span>` : ""}${d.due ? `<span class="chip k">${esc(d.due)}까지</span>` : ""}<span>${esc(D.line(d))}</span></div>
+        <div class="sh"><b class="sn">${esc(lbl(d))}</b>${D.isOpen(d) ? carryChip(d.at) : ""}<span class="chip ${D_CLS[stt] || ""}">${esc(stt)}</span>${d.urgent ? `<span class="chip warn">긴급</span>` : ""}${d.due ? `<span class="chip k">${esc(d.due)}까지</span>` : ""}<span>${esc(D.line(d))}</span></div>
         <div class="sx">${esc(D.methodName(d.method))}${d.guestIn ? " · 손님 객실 안" : ""}${hk ? ` <span class="w" style="display:inline">/ ${esc(D.line(d, true))} · ${esc(D.methodName(d.method, true))}${d.guestIn ? " · guest in room" : ""}</span>` : ""}</div>
-        <div class="sa"><span class="w ${slow ? "warnt" : ""}">요청 ${esc(whoLine(d, { short: true }))} (${age}분 전)${d.go ? ` · 출발 ${esc(whoLine(d.go, { short: true }))}` : ""}${d.done ? ` · 완료 ${esc(whoLine(d.done, { short: true }))}${d.done.note ? " (" + esc(d.done.note) + ")" : ""}` : ""}${d.fail ? ` · 불가(${esc(whoLine(d.fail, { short: true }))}): ${esc(d.fail.why)}` : ""}</span>
+        <div class="sa"><span class="w ${slow ? "warnt" : ""}">요청 ${esc(whoLine(d, { short: true }))} (${age < 60 ? age + "분" : durTxt(age * 60000)} 전)${d.go ? ` · 출발 ${esc(whoLine(d.go, { short: true }))}` : ""}${d.done ? ` · 완료 ${esc(whoLine(d.done, { short: true }))}${d.done.note ? " (" + esc(d.done.note) + ")" : ""}` : ""}${d.fail ? ` · 불가(${esc(whoLine(d.fail, { short: true }))}): ${esc(d.fail.why)}` : ""}</span>
           ${D.isOpen(d) && hk ? `${d.go ? "" : `<button type="button" class="btn sm" data-desk="go" data-id="${esc(d.id)}">가는 중</button>`}<button type="button" class="btn sm main" data-desk="done" data-id="${esc(d.id)}">완료</button><button type="button" class="btn sm" data-desk="part" data-id="${esc(d.id)}">일부만</button><button type="button" class="btn sm" data-desk="fail" data-id="${esc(d.id)}">못 함</button>` : ""}
           ${D.isOpen(d) && fo ? `<button type="button" class="lnk" data-desk="cancel" data-id="${esc(d.id)}">취소</button>` : ""}
           ${!D.isOpen(d) && !d.cancel && fo ? `<button type="button" class="lnk" data-desk="reopen" data-id="${esc(d.id)}">다시 요청</button>` : ""}</div>
@@ -1840,7 +1889,7 @@
         <form id="propForm" class="new">
           <div class="row2"><label class="f">지점 이름<input id="sName" maxlength="40" value="${esc(S.propertyName || "")}" placeholder="예: UH FLAT 서초"></label>
           <label class="f">지점 표시(영문·숫자)<input id="sPid" maxlength="20" value="${esc(S.propertyId || OPS.CTX.propertyId)}" pattern="[a-z0-9-]{1,20}"></label></div>
-          <div class="row2"><label class="f">밝은 화면 시작(자동 밝기)<input id="sDay" type="time" value="${esc(S.dayStart || OPS.CTX.dayStart)}"></label>
+          <div class="row2"><label class="f">주간 근무 시작(자동 밝기·인수 기준)<input id="sDay" type="time" value="${esc(S.dayStart || OPS.CTX.dayStart)}"></label>
           <label class="f">어두운 화면 시작(자동 밝기)<input id="sNight" type="time" value="${esc(S.nightStart || OPS.CTX.nightStart)}"></label></div>
           <label class="f">비번 변경 담당 (비밀번호 제공 객실 퇴실 시)<select id="sPw">${OPS.DEPTS.filter(d => d.id !== "MG").map(d => `<option value="${d.id}" ${(S.pwDept || OPS.CTX.pwDept) === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></label>
           <button class="btn main" type="submit">저장</button>
@@ -1885,7 +1934,7 @@
     S = S || {};
     OPS.CTX.propertyId = S.propertyId || "p1";
     OPS.CTX.propertyName = S.propertyName || "";
-    OPS.CTX.dayStart = S.dayStart || "07:00";
+    OPS.CTX.dayStart = S.dayStart || "08:00";   // [web] 주간 근무 시작 08:00
     OPS.CTX.nightStart = S.nightStart || "22:00";
     OPS.CTX.pwDept = S.pwDept || "FM";
     OPS.CATEGORIES = S.categories && S.categories.length ? S.categories.slice() : OPS.DEFAULT_CATEGORIES.slice();
@@ -2173,6 +2222,7 @@
     if (e.target.closest("[data-amore]")) { st.aMore = true; render(); return; }
     const hf = e.target.closest("[data-hf]");
     if (hf) { st.hf = hf.dataset.hf; render(); return; }
+    if (e.target.closest("[data-handoff]")) { handoff(); return; }
     const sd = e.target.closest("[data-send]");
     if (sd) { switchSend(sd.dataset.send, true); return; }
     const p = e.target.closest("[data-pri]");
@@ -2423,10 +2473,16 @@
     Store.watch(COL.settings, list => { applySettings(list.find(x => x.id === "main")); soon(); }, err);
     Store.watch(COL.manualStays, list => { st.manual = list; soon(); }, err);
     Store.watch(COL.stayIndex, list => { st.stayIdx = list.find(x => x.id === "main") || null; if (st.openRoomId && $("dlg").open) openRoom(st.openRoomId, true); }, err);
-    // 불출은 오늘 것만, 재고는 오늘 문서, 분실물은 전체(건수가 적다)
-    const today0 = OPS.ymd(Date.now());
-    Store.watchWhere(COL.deliveries, "date", today0, list => { st.deliv = list; if (st.tab === "work" || st.tab === "rooms" || st.tab === "board" || st.tab === "dash") soon(); }, err);
-    Store.watchWhere(COL.stock, "date", today0, list => { const o = {}; list.forEach(x => { o[x.b] = x; }); st.stock = o; if (st.tab === "desk" || st.tab === "svc") soon(); }, err);
+    // [web] 불출 = 오늘 것 + 날짜가 지나도 안 끝난 것(어젯밤 요청이 자정에 사라지지 않게). 재고 = 오늘 문서. 분실물은 전체(건수가 적다)
+    // "오늘"은 앱을 켠 시각에 고정하지 않는다: 1분마다 날짜를 보고 바뀌면 다시 거른다
+    Store.watch(COL.deliveries, list => { st.delivAll = list; dayFilter(); if (st.tab === "work" || st.tab === "rooms" || st.tab === "board" || st.tab === "dash") soon(); }, err);
+    Store.watch(COL.stock, list => { st.stockAll = list; dayFilter(); if (st.tab === "desk" || st.tab === "svc") soon(); }, err);
+    Store.watch(COL_HO, list => { st.handoffs = list; if (st.tab === "work") soon(); }, err);   // [web] 인수 확인 기록
+    setInterval(() => {
+      const t = OPS.ymd(Date.now());
+      if (t !== st.today) { const old = st.today; st.today = t; if (st.rdate === old) st.rdate = t; dayFilter(); render(); }
+      else if (st.tab === "work") soon();   // "넘어온 것"은 근무 시작 시각이 지나면 바뀐다
+    }, 60000);
     Store.watch(COL.lostFound, list => { st.lost = list; if (st.tab === "desk" || st.tab === "dash" || st.openRoomId) soon(); }, err);
     Store.watch(COL.roomNotes, list => { const o = {}; list.forEach(x => { o[x.id] = x; }); st.notes = o; if (st.tab === "board" || st.openRoomId) soon(); }, err);
     Store.watch(COL.staff, list => { st.staff = list; soon(); }, err);

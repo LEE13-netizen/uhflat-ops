@@ -159,7 +159,7 @@
   const S = { mode: "personal", id: "", pin: "", busy: false, pick: null, msg: "", err: false };
   const PIN_LEN = () => (S.mode === "legacy" ? 4 : 6);
 
-  function dots() { return `<div class="gdots" aria-label="PIN ${S.pin.length}자리 입력됨">${Array.from({ length: PIN_LEN() }, (_, i) => `<i class="${i < S.pin.length ? "on" : ""}"></i>`).join("")}</div>`; }
+  function dots() { return `<div class="gdots" id="gDots" tabindex="0" role="textbox" aria-label="PIN ${S.pin.length}자리 입력됨">${Array.from({ length: PIN_LEN() }, (_, i) => `<i class="${i < S.pin.length ? "on" : ""}"></i>`).join("")}</div>`; }
   function pad() { return `<div class="gpad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" data-k="C" class="sm">지움</button><button type="button" data-k="0">0</button><button type="button" data-k="B" class="sm" aria-label="한 자리 지우기">←</button></div>`; }
   function msg(d) { return `<div class="gmsg ${S.err ? "err" : ""}" role="status">${esc(S.msg || d)}</div>`; }
   const logo = () => `<div class="glogo">UHC<small>OPERATION SYSTEM · HOTEL INTEGRATED MANAGEMENT</small></div>${CFG.env !== "prod" ? `<div class="genv">${esc(CFG.name)} 환경</div>` : ""}`;
@@ -182,7 +182,9 @@
         <div class="gdept">${esc(S.pick.label)} <span>${esc(S.pick.en)}</span></div>${dots()}${msg("부서 PIN 4자리를 누르십시오")}${pad()}`;
     }
     g.innerHTML = `<div class="gbox">${logo()}${body}<p class="gfoot">공용 기기는 사용 후 <b>잠금</b>을 눌러 주십시오.</p></div>`;
-    const idEl = $("gId"); if (idEl && !S.pin) idEl.focus();
+    // 이름이 비어 있으면 이름 칸, 아니면 PIN 칸(키보드 숫자 입력)에 커서
+    const idEl = $("gId"), dEl = $("gDots");
+    if (idEl && !S.id) idEl.focus(); else if (dEl && !S.busy) dEl.focus({ preventScroll: true });
   }
 
   async function tryLogin() {
@@ -246,6 +248,16 @@
   }
 
   // ---------- 입력 처리 ----------
+  // 이름 입력 후 엔터 → PIN 칸으로. 한글 입력 중(조합 중) 엔터도 조합이 끝난 값을 읽도록 한 박자 늦춘다
+  function toPin() {
+    setTimeout(() => {
+      const el = $("gId"); if (!el) return;
+      S.id = el.value.trim();
+      S.msg = S.id ? "PIN 6자리를 누르십시오" : "이름을 적어 주십시오"; S.err = !S.id;
+      renderGate();
+    }, 0);
+  }
+  document.addEventListener("submit", e => { if (e.target && e.target.id === "gIdForm") { e.preventDefault(); toPin(); } });
   function isChange() { return !!document.querySelector("#gate #cOut, #gate #cCancel"); }
   document.addEventListener("click", e => {
     const g = $("gate"); if (!g || g.hidden || S.busy) return;
@@ -272,7 +284,11 @@
   });
   document.addEventListener("keydown", e => {
     const g = $("gate"); if (!g || g.hidden || S.busy) return;
-    if (e.target && e.target.id === "gId") { if (e.key === "Enter") e.preventDefault(); return; }   // 아이디 칸 입력은 그대로
+    // 이름 칸: 엔터(또는 탭)를 누르면 PIN 칸으로 넘어간다. 그 밖의 입력은 그대로
+    if (e.target && e.target.id === "gId") {
+      if (e.key === "Enter") { e.preventDefault(); toPin(); }
+      return;
+    }
     if (isChange()) { if (/^\d$/.test(e.key)) changeKey(e.key); else if (e.key === "Backspace") changeKey("B"); return; }
     if (!(S.mode === "personal" || S.pick)) return;
     if (/^\d$/.test(e.key) && S.pin.length < PIN_LEN()) { if ($("gId")) S.id = $("gId").value; S.pin += e.key; renderGate(); if (S.pin.length === PIN_LEN()) tryLogin(); }

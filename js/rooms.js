@@ -90,15 +90,17 @@
     },
 
     // 날짜 T의 객실 상태: 서초 청소표 생성 로직(generate)을 그대로 쓰고, 전날 밤 비어 있던 방은 입실·공실로 채운다.
-    dayFrom(stays, T, learnedMaster, bm) {
+    // [web] history: 올려 둔 과거 청소표 { 날짜: { main|annex: { 호수: "전체재실"|"재실청소"… } } } — 전체 청소 날짜의 기준점
+    dayFrom(stays, T, learnedMaster, bm, history) {
       bm = bm || { main: "main", annex: "annex" };
-      const g = CT().generate(stays, T, {}, learnedMaster || { main: {}, annex: {} }, {});
+      const g = CT().generate(stays, T, history || {}, learnedMaster || { main: {}, annex: {} }, {});
       const out = {};
       ["main", "annex"].forEach(src => {
         const b = bm[src];
         (g[src] || []).forEach(r => {
           const flags = (r.flags || []).concat(r.risk || []).filter(f => !/객실구분 미확인|청소표 없음/.test(f)).slice(0, 3);
           out[roomId(b, r.room)] = { stay: r.state || "연박", clean: r.kind || "", sameDayIn: r.today === "당일", flags };
+          if (typeof r.day === "number") out[roomId(b, r.room)].day = r.day;   // [web] 체크인 후 며칠째(7일 점검용)
         });
         const S = stays && stays[src];
         if (!S) return;

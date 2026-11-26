@@ -1,6 +1,6 @@
 // 직원·권한 관리. 모든 권한 검사는 여기(서버)에서 한다.
 // 프로그램 관리자(super_admin): 모든 부서·직원, 부서 관리자 지정, 부서 이동, 설정
-// 부서 관리자(dept_admin): 자기 부서의 일반 직원만(추가·정보 수정·PIN 초기화·잠금 해제·비활성화)
+// 부서 관리자(dept_admin): 자기 부서의 일반 직원만(추가·정보 수정·PIN 초기화·잠금 해제·비활성화·삭제)
 import { adminClient, audit, BRANCH, caller, cors, derivePassword, EMAIL_DOMAIN, ID_RE, json, normId, PEPPER_VERSION, randomPin } from "../_shared/common.ts";
 
 type Prof = { user_id: string; login_id: string; name: string; title: string; dept_id: string; role: string; active: boolean; must_change_pin: boolean; branch_id: string };
@@ -112,6 +112,20 @@ Deno.serve(async (req) => {
     // 비활성화 시 이미 로그인된 기기도 끊는다
     if (!active) await admin.auth.admin.signOut(t.user_id, "global").catch(() => {});
     await audit(admin, { actor_id: me.user_id, action: active ? "staff_activate" : "staff_deactivate", target_type: "profile", target_id: t.user_id, before: { active: t.active }, after: { active } });
+    return json(200, { ok: true });
+  }
+
+  // 직원 삭제: 계정(로그인)과 직원 정보만 지운다. 업무 기록은 남고 작성자 이름도 기록에 그대로 남는다. 되돌릴 수 없다
+  if (action === "delete") {
+    const t = await target(b.user_id); if (t instanceof Response) return t;
+    if (t.user_id === me.user_id) return json(400, { error: "본인 계정은 삭제할 수 없습니다." });
+    if (t.role === "super_admin") return json(403, { error: "프로그램 관리자 계정은 삭제할 수 없습니다." });
+    const d = (await admin.from("departments").select("code").eq("id", t.dept_id).maybeSingle()).data;
+    // 직원 정보를 지우면 데이터 접근(RLS)이 바로 막히고, 로그인 계정을 지우면 다시 로그인할 수 없다
+    const del = await admin.from("profiles").delete().eq("user_id", t.user_id);
+    if (del.error) return json(500, { error: "직원 정보를 지우지 못했습니다." });
+    const du = await admin.auth.admin.deleteUser(t.user_id);
+    await audit(admin, { actor_id: me.user_id, action: "staff_delete", target_type: "profile", target_id: t.user_id, before: { login_id: t.login_id, name: t.name, title: t.title, dept: d?.code, role: t.role }, after: du.error ? { auth_user_left: true } : null });
     return json(200, { ok: true });
   }
 

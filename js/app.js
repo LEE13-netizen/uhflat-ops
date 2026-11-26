@@ -121,9 +121,9 @@
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     const b = $("themeBtn");
     if (b) {
-      b.innerHTML = (dark ? MOON : SUN) + `<span>${mode === "auto" ? (dark ? "야간 자동" : "주간 자동") : dark ? "야간" : "주간"}</span>`;
+      b.innerHTML = (dark ? MOON : SUN) + `<span>${OPS.Auth ? (mode === "auto" ? "자동(" + (dark ? "어둡게" : "밝게") + ")" : dark ? "어둡게" : "밝게") : mode === "auto" ? (dark ? "야간 자동" : "주간 자동") : dark ? "야간" : "주간"}</span>`;
       b.setAttribute("aria-pressed", String(mode !== "auto"));
-      b.setAttribute("aria-label", "화면 밝기, 지금 " + (mode === "auto" ? "자동" : dark ? "야간 고정" : "주간 고정") + ". 누르면 바뀜");
+      b.setAttribute("aria-label", "화면 밝기, 지금 " + (mode === "auto" ? "자동" : dark ? (OPS.Auth ? "어둡게 고정" : "야간 고정") : (OPS.Auth ? "밝게 고정" : "주간 고정")) + ". 누르면 바뀜");
     }
     const big = mem.get("size", "") === "lg";
     document.documentElement.dataset.size = big ? "lg" : "";
@@ -140,7 +140,7 @@
       return `<button type="button" data-role="${d.id}" aria-pressed="${d.id === st.role}" aria-label="${esc(d.en + " " + d.name)}${n ? ", 확인 필요 " + n + "건" : ""}"><span class="rc">${icon(d.id)}</span><span class="rl"><span class="re">${esc(d.en)}</span><span class="rk">${esc(d.name)}</span></span>${n ? `<span class="n">${n}</span>` : ""}</button>`;
     }).join("");
     const me = OPS.DEPTS.find(d => d.id === st.role) || {};
-    const wb = $("whoBtn"); if (wb) { wb.dataset.who = st.role; wb.innerHTML = `<span class="rc">${icon(me.id)}</span><span class="rk2">${esc(me.name || "")}${st.me ? " · " + esc(nameOf(st.me.id, $("myName").value.trim()) || "로그인") : ""}</span>`; }
+    const wb = $("whoBtn"); if (wb) { wb.dataset.who = st.role; wb.innerHTML = `<span class="rc">${icon(me.id)}</span><span class="rk2">${esc(me.name || "")}${st.me && !OPS.Auth ? " · " + esc(nameOf(st.me.id, $("myName").value.trim()) || "로그인") : ""}</span>`; }
     const ab = $("adminBtn"); if (ab) { ab.hidden = !adminOk(); ab.setAttribute("aria-pressed", String(st.role === "MG")); }
     // 탭 숫자: 키핑은 아직 출발 안 한 불출, 프론트는 키핑이 "못 함"으로 돌려보낸 오늘 요청
     const badge = id => {

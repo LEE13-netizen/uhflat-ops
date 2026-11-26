@@ -42,7 +42,18 @@ $patches = @(
      to   = 'h !== st.role && (h !== "MG" || adminOk()) && canRole(h)) {' }
 )
 $optional = @(
-  @{ name = "판 이름"; from = '+ OPS.VERSION + " · 1인 시험판";'; to = '+ OPS.VERSION + (OPS.Auth ? " · 웹" : " · 1인 시험판");' }
+  @{ name = "판 이름"; from = '+ OPS.VERSION + " · 1인 시험판";'; to = '+ OPS.VERSION + (OPS.Auth ? " · 웹" : " · 1인 시험판");' },
+  # 상단 메뉴 정리(web/header.js)와 짝: 밝기 표시를 근무 파트(주간·야간)와 헷갈리지 않는 말로
+  @{ name = "밝기 표시 말";
+     from = '${mode === "auto" ? (dark ? "야간 자동" : "주간 자동") : dark ? "야간" : "주간"}';
+     to   = '${OPS.Auth ? (mode === "auto" ? "자동(" + (dark ? "어둡게" : "밝게") + ")" : dark ? "어둡게" : "밝게") : mode === "auto" ? (dark ? "야간 자동" : "주간 자동") : dark ? "야간" : "주간"}' },
+  @{ name = "밝기 읽기 말";
+     from = '(mode === "auto" ? "자동" : dark ? "야간 고정" : "주간 고정")';
+     to   = '(mode === "auto" ? "자동" : dark ? (OPS.Auth ? "어둡게 고정" : "야간 고정") : (OPS.Auth ? "밝게 고정" : "주간 고정"))' },
+  # 이름은 상단 "내 계정" 메뉴 한 곳에만: 부서 버튼에서는 부서만
+  @{ name = "부서 버튼 이름 빼기";
+     from = '${st.me ? " · " + esc(nameOf(st.me.id, $("myName").value.trim()) || "로그인") : ""}';
+     to   = '${st.me && !OPS.Auth ? " · " + esc(nameOf(st.me.id, $("myName").value.trim()) || "로그인") : ""}' }
 )
 foreach ($p in $patches) {
   $n = ([regex]::Matches($t, [regex]::Escape($p.from))).Count
@@ -68,6 +79,7 @@ $tail = @"
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="web/config.js"></script>
 <script src="web/staff.js"></script>
+<script src="web/header.js"></script>
 <script src="web/auth.js"></script>
 </body>
 "@

@@ -20,6 +20,15 @@
     }
     // 같은 모음을 여러 화면이 지켜보면 구독 하나를 나눠 쓴다
     const hubs = {};
+    // 연결 상태(상단 점 표시용): 모든 구독이 SUBSCRIBED면 ok, 하나라도 끊기면 down
+    const chState = {};
+    OPS.Conn = { state: "connecting" };
+    const connUpdate = (c, s) => {
+      chState[c] = s;
+      const v = Object.values(chState);
+      const next = v.some(x => x === "CHANNEL_ERROR" || x === "TIMED_OUT" || x === "CLOSED") ? "down" : v.every(x => x === "SUBSCRIBED") ? "ok" : "connecting";
+      if (next !== OPS.Conn.state) { OPS.Conn.state = next; try { dispatchEvent(new Event("ops-conn")); } catch (e) {} }
+    };
     function hub(c) {
       if (hubs[c]) return hubs[c];
       const h = hubs[c] = { map: new Map(), fns: new Set(), ready: false, errs: new Set() };
@@ -32,7 +41,7 @@
           else if (p.new) h.map.set(p.new.id, row(p.new));
           emit();
         })
-        .subscribe(s => { if (s === "SUBSCRIBED") load(); if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") h.errs.forEach(f => f(new Error("실시간 연결이 끊겼습니다(" + s + ")"))); });
+        .subscribe(s => { connUpdate(c, s); if (s === "SUBSCRIBED") load(); if (s === "CHANNEL_ERROR" || s === "TIMED_OUT") h.errs.forEach(f => f(new Error("실시간 연결이 끊겼습니다(" + s + ")"))); });
       return h;
     }
     // 내 저장은 실시간 알림을 기다리지 않고 화면에 바로 반영

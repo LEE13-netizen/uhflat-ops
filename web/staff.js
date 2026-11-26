@@ -6,7 +6,7 @@
 (function () {
   const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ROLE = { super_admin: "프로그램 관리자", dept_admin: "부서 관리자", staff: "직원" };
-  const ACTION = { login: "로그인", login_locked: "로그인 잠금", pin_changed: "PIN 변경", pin_reset: "PIN 초기화", unlock: "잠금 해제", staff_create: "직원 추가", staff_update: "직원 정보 수정", staff_activate: "재활성화", staff_deactivate: "비활성화", staff_move_dept: "부서 이동", staff_set_role: "권한 변경", settings_update: "설정 변경", bootstrap_super_admin: "프로그램 관리자 계정 생성" };
+  const ACTION = { login: "로그인", login_locked: "로그인 잠금", pin_changed: "PIN 변경", pin_reset: "PIN 초기화", unlock: "잠금 해제", staff_create: "직원 추가", staff_update: "직원 정보 수정", staff_activate: "재활성화", staff_deactivate: "비활성화", staff_move_dept: "부서 이동", staff_delete: "직원 삭제", staff_set_role: "권한 변경", settings_update: "설정 변경", bootstrap_super_admin: "프로그램 관리자 계정 생성" };
   // 부서별 직급 목록(고르거나 직접 적을 수 있음)
   const TITLES = {
     FO: ["인턴", "프론트 사원", "주임", "대리", "프론트 매니저", "프론트 팀장"],
@@ -32,7 +32,7 @@
     st.depts = data || [];
   }
   async function loadLogs() {
-    const { data, error } = await window.OPS.SB.from("audit_logs").select("at, actor_id, action, target_id, after").order("at", { ascending: false }).limit(60);
+    const { data, error } = await window.OPS.SB.from("audit_logs").select("at, actor_id, action, target_id, before, after").order("at", { ascending: false }).limit(60);
     if (error) throw new Error("감사 로그를 읽지 못했습니다.");
     st.logs = data || [];
   }
@@ -81,6 +81,7 @@
               locked ? `<button type="button" class="btn sm" data-sp="unlock" data-u="${s.user_id}">잠금 해제</button>` : "",
               self ? "" : `<button type="button" class="btn sm" data-sp="set_active" data-u="${s.user_id}" data-v="${!s.active}">${s.active ? "비활성화" : "재활성화"}</button>`,
               sup && !self ? `<button type="button" class="btn sm" data-sp="set_role" data-u="${s.user_id}" data-v="${s.role === "dept_admin" ? "staff" : "dept_admin"}">${s.role === "dept_admin" ? "부서 관리자 해제" : "부서 관리자 지정"}</button>` : "",
+              self ? "" : `<button type="button" class="btn sm sp-del" data-sp="delete" data-u="${s.user_id}">삭제</button>`,
               sup && !self ? `<select class="sp-mv" data-sp="move_dept" data-u="${s.user_id}" aria-label="부서 이동">${st.depts.map(d => `<option value="${esc(d.code)}" ${d.id === s.dept_id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>` : ""
             ].join("");
             return `<tr class="${s.active ? "" : "sp-off"}"><td><b>${esc(s.name)}</b>${s.title ? ` <span class="sp-c">${esc(s.title)}</span>` : ""}</td><td>${esc(s.login_id)}</td><td>${esc(deptName(s.dept_id))}</td><td>${ROLE[s.role]}</td><td>${status(s)}${s.guard && s.guard.failed_count ? ` <span class="sp-c">실패 ${s.guard.failed_count}</span>` : ""}</td><td>${fmt(s.guard && s.guard.last_login_at)}</td><td class="sp-a">${acts}</td></tr>`;
@@ -96,7 +97,7 @@
           <p class="sp-g">부서 관리자는 직원·권한 탭에서 직원별로 지정·해제합니다. 화면 조작이 없으면 설정한 시간 뒤 자동으로 로그인 화면으로 돌아갑니다.</p></section>`;
       } else {
         body += `<section class="sp-card"><h3>감사 로그 <span class="sp-c">최근 60건</span></h3>${st.logs ? `<div class="scroll"><table class="sp-t"><thead><tr><th>시각</th><th>누가</th><th>무엇을</th><th>대상</th></tr></thead><tbody>
-          ${st.logs.map(l => `<tr><td>${fmt(l.at)}</td><td>${esc(nameOf(l.actor_id))}</td><td>${esc(ACTION[l.action] || l.action)}</td><td>${esc(l.target_id && l.target_id !== l.actor_id ? nameOf(l.target_id) : "")}${l.after && l.after.login_id ? " (" + esc(l.after.login_id) + ")" : ""}</td></tr>`).join("")}</tbody></table></div>` : "불러오는 중…"}</section>`;
+          ${st.logs.map(l => `<tr><td>${fmt(l.at)}</td><td>${esc(nameOf(l.actor_id))}</td><td>${esc(ACTION[l.action] || l.action)}</td><td>${esc(l.target_id && l.target_id !== l.actor_id ? (l.before && l.before.name && l.action === "staff_delete" ? l.before.name : nameOf(l.target_id)) : "")}${l.after && l.after.login_id ? " (" + esc(l.after.login_id) + ")" : ""}</td></tr>`).join("")}</tbody></table></div>` : "불러오는 중…"}</section>`;
       }
     } else body = `<p class="sp-g">불러오는 중…</p>`;
     box.innerHTML = `<div class="sp-head"><b>일반 설정 · 직원·권한</b><button type="button" class="x2" data-sp="close" aria-label="닫기">×</button></div>
@@ -136,6 +137,10 @@
       if (r && r.temp_pin) { st.shown = { name: s ? s.name : "", pin: r.temp_pin, login_id: s && s.login_id }; render(); }
     } else if (a === "unlock") await act(() => call({ action: "unlock", user_id: u }), "잠금을 풀었습니다.");
     else if (a === "set_active") { const v = b.dataset.v === "true"; if (!v && !confirm((s ? s.name : "") + " 직원을 비활성화합니다. 로그인된 기기도 끊깁니다. 기록은 남습니다.")) return; await act(() => call({ action: "set_active", user_id: u, active: v }), v ? "다시 쓸 수 있게 했습니다." : "비활성화했습니다."); }
+    else if (a === "delete") {
+      if (!confirm((s ? s.name : "") + " 직원을 삭제합니다.\n\n· 로그인 계정과 직원 정보가 지워지며 되돌릴 수 없습니다.\n· 그동안 남긴 업무 기록과 작성자 이름은 그대로 남습니다.\n· 잠시 쉬는 직원이면 삭제 대신 '비활성화'를 쓰십시오.")) return;
+      await act(() => call({ action: "delete", user_id: u }), "삭제했습니다.");
+    }
     else if (a === "set_role") await act(() => call({ action: "set_role", user_id: u, role: b.dataset.v }), "권한을 바꿨습니다.");
     else if (a === "edit") {
       const name = prompt("이름", s ? s.name : ""); if (name === null) return;
@@ -171,7 +176,7 @@
       const b = document.createElement("button"); b.type = "button"; b.className = "tgl"; b.id = "staffBtn";
       b.textContent = A().kind === "legacy" ? "관리자 계정 만들기" : "직원·권한";
       const lb = document.getElementById("lockBtn");
-      if (lb && lb.parentNode === me) me.insertBefore(b, lb); else me.appendChild(b);
+      if (lb && lb.parentNode) lb.parentNode.insertBefore(b, lb); else me.appendChild(b);
     }
   };
 })();

@@ -104,6 +104,7 @@
     addHeader();
     startIdle();
     if (window.OPS_STAFF && (OPS.Auth.admin || OPS.Auth.legacyOwner)) window.OPS_STAFF.mount();
+    if (window.OPS_HEADER) setTimeout(() => window.OPS_HEADER.mount(), 0);
   }
   function addHeader() {
     const me = document.querySelector(".me");

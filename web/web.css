@@ -35,6 +35,42 @@ body.has-envstrip .gate{top:32px}
 #gate.over{background:rgb(0 0 0/.45);z-index:120}
 #gate.over .gbox{background:var(--bg);border-radius:18px;padding:22px}
 
+/* 상단 메뉴 정리 (web/header.js) */
+body.has-envstrip .side.side{top:32px}
+body.webhead #loginWho,body.webhead #where,body.webhead .mark small{display:none}
+body.webhead .me{flex-wrap:nowrap}
+.wdd{position:relative}
+.wddb{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.wddb span{max-width:9em;overflow:hidden;text-overflow:ellipsis}
+.wpop{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:70;min-width:220px;padding:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgb(0 0 0/.16);flex-direction:column;gap:6px}
+.wdd.open .wpop{display:flex}
+.wpop>button{width:100%;justify-content:flex-start;display:inline-flex;align-items:center;gap:8px;min-height:44px}
+.wpop #sizeBtn::after{content:"  글자 크기";font-weight:500;color:var(--muted);white-space:pre}
+.wpop #langBtn::after{content:"  화면 언어";font-weight:500;color:var(--muted);white-space:pre}
+.wph{margin:2px 4px 2px;font-size:13px;font-weight:700;color:var(--muted)}
+.wacct{display:grid;gap:2px;padding:6px 6px 8px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.wacct b{font-size:17px}.wacct span{font-size:14px;color:var(--muted);font-weight:600}.wacct small{font-size:12px;color:var(--muted);margin-top:4px}
+.wpop #lockBtn{color:var(--hot);border-color:var(--hot-bg)}
+.conndot{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:700;white-space:nowrap}
+.conndot i{width:11px;height:11px;border-radius:50%;background:var(--muted);flex:none}
+.conndot.ok i{background:var(--ok)}.conndot.busy i{background:var(--warn)}.conndot.warn i{background:var(--warn)}
+.conndot.down{color:var(--hot);background:var(--hot-bg);padding:4px 10px;border-radius:999px}.conndot.down i{background:var(--hot)}
+.conndot.warn{color:var(--warn)}
+@media(min-width:601px){.top>#connDot{margin-left:auto}.top>#connDot~.me{margin-left:0}.top>#connDot~.adminbtn{margin-left:0}}
+/* 휴대폰: 메뉴(서랍) 안에서 계정·화면 설정을 펼쳐 보인다 */
+@media(max-width:600px){
+  #connDot{flex:none}
+  .sideme .me .wdd{grid-column:1/-1}
+  .sideme .me .wddb{display:none}
+  .sideme .me .wpop{display:grid;grid-template-columns:1fr 1fr;position:static;min-width:0;box-shadow:none;padding:10px}
+  .sideme .me .wph,.sideme .me .wacct{grid-column:1/-1}
+  .sideme .me .wpop>button{justify-content:center}
+  .sideme .me #acctDD{order:-1}
+  .sideme .me #setDD .wpop{grid-template-columns:1fr}
+  .sideme .me #setDD .wpop>button{justify-content:flex-start}
+  .sideme .me #lockBtn{grid-column:1/-1}
+}
+
 /* 일반 설정 · 직원·권한 창 */
 .sp{position:fixed;inset:0;z-index:90;overflow-y:auto;background:var(--bg);padding:16px max(16px,3vw) 40px}
 .sp[hidden]{display:none}
@@ -55,6 +91,7 @@ body.has-envstrip .gate{top:32px}
 .sp-form .sp-chk input{min-width:0;width:20px;height:20px}
 .sp-t td,.sp-t th{white-space:nowrap}
 .sp-a{display:flex;flex-wrap:wrap;gap:4px;white-space:normal!important;min-width:460px}
+.sp-del{color:var(--hot)}
 .sp-mv{height:40px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
 .sp-off td{opacity:.55}
 .sx{font-size:13px;font-weight:700;padding:2px 8px;border-radius:999px}

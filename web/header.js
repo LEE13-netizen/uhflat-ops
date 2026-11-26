@@ -55,7 +55,7 @@
     setInterval(paintConn, 15000);
 
     // "관리자" → "관리자 화면"
-    if (ab) { const s = ab.querySelector("span"); if (s) s.textContent = "관리자 화면"; ab.title = "프로그램 관리자 화면(설정·통계 등)"; }
+    if (ab) { const s = ab.querySelector("span"); if (s) s.textContent = "SYSTEM OWNER"; ab.title = "SYSTEM OWNER 화면(설정·통계 등)"; }
 
     // 화면 설정
     const set = dd("setDD", ICON.sliders + "<span>화면 설정</span>", "화면 설정");

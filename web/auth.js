@@ -46,7 +46,9 @@
       const owner = prof.role === "super_admin";
       let dept = prof.departments && DEPTS.includes(prof.departments.code) ? prof.departments.code : "FO";
       if (dept === "MG" && !owner) dept = "MN";              // 관리자(MG) 화면은 프로그램 관리자만
-      OPS.Auth = { kind: "personal", uid: user.id, login_id: prof.login_id, name: prof.name, title: prof.title, role: prof.role, dept, deptName: prof.departments ? prof.departments.name : dept, owner, admin: owner || prof.role === "dept_admin", allowed: owner ? DEPTS.slice() : [dept], mustChangePin: prof.must_change_pin, lock };
+      const head = !owner && prof.role === "dept_admin" && (dept === "FO" || dept === "MN");   // [web] 매니지먼트 합병: 프론트 부서장 = 프론트 + 부서장(전 부서) 보기
+      if (dept === "MN") dept = "FO";
+      OPS.Auth = { kind: "personal", uid: user.id, login_id: prof.login_id, name: prof.name, title: prof.title, role: prof.role, dept, deptName: prof.departments ? prof.departments.name : dept, owner, admin: owner || prof.role === "dept_admin", allowed: owner ? DEPTS.slice() : head ? ["FO", "MN"] : [dept], mustChangePin: prof.must_change_pin, lock };
       installUserApi(prof);
     } else {
       const m = user.app_metadata || {};
@@ -165,12 +167,12 @@
     { id: "FO", name: "프론트", en: "Front Office" },
     { id: "HK", name: "키핑", en: "Housekeeping" },
     { id: "FM", name: "시설", en: "Engineering" },
-    { id: "MN", name: "매니지먼트", en: "Management" }
+    { id: "MG", name: "SYSTEM OWNER", en: "프로그램 관리자" }   // 매니지먼트는 프론트 부서장 권한으로 합침
   ];
-  const ADMIN = { id: "MG", name: "관리자", en: "Administrator" };
+  const ADMIN = { id: "MG", name: "SYSTEM OWNER", en: "프로그램 관리자" };
   const gDept = id => GATE_DEPTS.find(d => d.id === id) || (id === "MG" ? ADMIN : { id, name: id, en: "" });
   // 부서 공용 계정(config.accounts): 매니지먼트 = 공용 '관리'(MG) 계정, 관리자 = 소유자 계정
-  const LEGACY_ACC = { FO: "FO", HK: "HK", FM: "FM", MN: "MG", MG: "OWNER" };
+  const LEGACY_ACC = { FO: "FO", HK: "HK", FM: "FM", MG: "OWNER" };
   const GICON = {
     FO: '<circle cx="9" cy="5" r="2.7"/><path d="M3.8 13.2c.3-3 2.4-4.9 5.2-4.9s4.9 1.9 5.2 4.9"/><path d="M15.8 13.2a2.7 2.7 0 0 1 5.4 0"/><path d="M18.5 9.4v1.1"/><path d="M1.8 13.2h20.4"/><path d="M3.3 13.2v7.8h17.4v-7.8"/>',
     HK: '<path d="M15.5 2.5 11 12"/><path d="M6.5 12h8.5l2 9h-12.5z"/><path d="M8.5 15.5v5.5M11.5 15.5v5.5M14.5 15.5v5.5"/><path d="M19.5 3.5v4M17.5 5.5h4"/>',
@@ -200,8 +202,7 @@
     const g = $("gate");
     const foot = `<p class="gfoot">공용 기기는 사용 후 <b>잠금</b>을 눌러 주십시오.</p>`;
     if (S.mode === "pick") {
-      g.innerHTML = `<div class="gbar"><button type="button" class="lkadmin" data-gdept="MG">${gIcon("MG", 20)}<span>관리자</span></button></div>
-        <div class="gbox gwide">${logo()}<span class="gclock" id="gClock">${esc(clockTxt())}</span>
+      g.innerHTML = `<div class="gbox gwide">${logo()}<span class="gclock" id="gClock">${esc(clockTxt())}</span>
         <p class="lkq">부서를 선택해 주십시오</p>${S.msg ? msg("") : ""}
         <div class="lkd">${GATE_DEPTS.map(d => `<button type="button" data-gdept="${d.id}" class="lk-${d.id}"><span class="ic">${gIcon(d.id, 48)}</span><b>${esc(d.name)}</b><small>${esc(d.en)}</small></button>`).join("")}</div>
         ${foot}</div>`;
@@ -214,10 +215,10 @@
           <label class="gid"><span>이름</span><input id="gId" value="${esc(S.id)}" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="예: 홍길동" aria-label="이름(아이디)"></label>
         </form>
         ${dots()}${msg("이름을 적고 PIN 6자리를 누르십시오")}${pad()}
-        ${CFG.legacyDeptLogin && LEGACY_ACC[S.dept] ? `<button type="button" class="gback" id="gLegacy">${esc(S.dept === "MG" ? "소유자 공용 PIN으로 들어가기" : "부서 공용 PIN으로 들어가기")} (병행 기간)</button>` : ""}`;
+        ${CFG.legacyDeptLogin && LEGACY_ACC[S.dept] ? `<button type="button" class="gback" id="gLegacy">${esc(S.dept === "MG" ? "SYSTEM OWNER 공용 PIN으로 들어가기" : "부서 공용 PIN으로 들어가기")} (병행 기간)</button>` : ""}`;
     } else {
       body = `<button type="button" class="gback" id="gPersonal">← 개인 계정(이름 + PIN)으로</button>${deptHead(S.dept)}
-        ${dots()}${msg((S.dept === "MG" ? "소유자" : "부서") + " 공용 PIN 4자리를 누르십시오")}${pad()}`;
+        ${dots()}${msg((S.dept === "MG" ? "SYSTEM OWNER" : "부서") + " 공용 PIN 4자리를 누르십시오")}${pad()}`;
     }
     g.innerHTML = `<div class="gbox">${logo()}${body}${foot}</div>`;
     // 이름이 비어 있으면 이름 칸, 아니면 PIN 칸(키보드 숫자 입력)에 커서
@@ -241,7 +242,7 @@
       if (!A.owner && S.dept !== A.dept) {
         await sb.auth.signOut(); OPS.Auth = null;
         const own = gDept(A.dept).name;
-        S.msg = S.dept === "MG" ? "관리자 화면은 프로그램 관리자 계정만 들어갈 수 있습니다" : `${own} 소속 계정입니다. ${eul(own)} 눌러 다시 로그인해 주십시오`;
+        S.msg = S.dept === "MG" ? "SYSTEM OWNER는 프로그램 관리자 계정만 들어갈 수 있습니다" : `${own} 소속 계정입니다. ${eul(own)} 눌러 다시 로그인해 주십시오`;
         S.err = true; if (S.dept !== "MG") S.mode = "pick"; renderGate(); return;
       }
       if (A.owner) { try { localStorage.setItem("opsFrameUi:role", S.dept); } catch (e) {} }

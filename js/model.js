@@ -13,8 +13,8 @@
     { id: "FO", name: "프론트", en: "Front Office", code: "FO" },
     { id: "HK", name: "키핑", en: "Housekeeping", code: "HK" },
     { id: "FM", name: "시설", en: "Engineering", code: "ENG" },
-    { id: "MN", name: "매니지먼트", en: "Management", code: "MGT" },   // v0.23: 매니저·지배인. 모든 부서 업무·통계, 설정은 제외
-    { id: "MG", name: "관리자", en: "Administrator", code: "ADM" }     // 프로그램 전체 관리자 = 소유자 전용(오른쪽 위 입구)
+    { id: "MN", name: "부서장", en: "Manager", code: "MGR" },   // v0.23 매니지먼트 → [web] 프론트 부서장 권한으로 합침: 모든 부서 업무·통계, 설정은 제외
+    { id: "MG", name: "SYSTEM OWNER", en: "System Owner", code: "OWN" }     // 프로그램 전체 관리자 = 소유자 전용
   ];
   OPS.isMgr = r => r === "MG" || r === "MN";
   OPS.deptName = id => (OPS.DEPTS.find(d => d.id === id) || {}).name || id || "";

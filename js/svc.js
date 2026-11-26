@@ -71,6 +71,13 @@
     return !(s.foAck && s.foAck.at >= s.done.at);
   }
 
+  // [web] 키핑이 직접 퇴실을 확인한 객실(프론트 퇴실완 전에 손님이 나감) → 프론트가 읽었는가
+  function foCoNeedsAck(row) {
+    const s = row.s || {};
+    if (row.type !== "out" || !s.co || s.co.role !== "HK" || s.ext || s.done) return false;
+    return !(s.foCoAck && s.foCoAck.at >= s.co.at);
+  }
+
   function hkTodo(row) {
     const s = row.s || {};
     if (s.done) return false;
@@ -138,7 +145,7 @@
   const by = (actor, extra) => Object.assign({ at: Date.now(), by: actor.name || "", uid: actor.uid || "", role: actor.role }, extra || {});
 
   OPS.Svc = {
-    sid, rows, status, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, foNeedsAck, hkTodo, hkSort, summary, windowStart, stayWork,
+    sid, rows, status, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, foNeedsAck, foCoNeedsAck, hkTodo, hkSort, summary, windowStart, stayWork,
     send: (date, id, cur, actor, via) => write(date, id, cur, { sent: by(actor, { via: clean(via, 12) }) }, actor, "재실 안내 발송"),
     unsend: (date, id, cur, actor) => write(date, id, cur, { sent: null }, actor, "발송 취소"),
     replyTime: (date, id, cur, actor, window, items) => {
@@ -170,6 +177,13 @@
       return doc;
     },
     undoCheckout: (date, id, cur, actor) => write(date, id, cur, { co: null }, actor, "퇴실완 취소"),
+    // [web] 키핑: 손님이 나간 것을 직접 확인(프론트 퇴실완 전). 퇴실완과 같게 기록하고(비번 변경 업무 포함), 키핑 확인·청소 시작까지
+    hkCheckout: async (date, id, cur, actor, room, startNow) => {
+      const doc = await OPS.Svc.checkout(date, id, cur, actor, room);
+      const p = { hkAck: by(actor) }; if (startNow) p.start = by(actor);
+      return write(date, id, doc, p, actor, startNow ? "키핑 퇴실 확인·청소 시작" : "키핑 퇴실 확인");
+    },
+    foCoAck: (date, id, cur, actor) => write(date, id, cur, { foCoAck: by(actor) }, actor, "프론트 확인(키핑 퇴실 확인)"),
     // 키핑: 청소하러 갔는데 아직 손님이 있음 → 프론트가 레이트·연장·퇴실완으로 답한다
     stillIn: (date, id, cur, actor) => write(date, id, cur, { stillIn: by(actor) }, actor, "키핑: 아직 재실"),
     late: (date, id, cur, actor, time) => {

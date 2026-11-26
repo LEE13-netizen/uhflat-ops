@@ -66,7 +66,7 @@
   const fitTab = () => { if (!OPS.isMgr(st.role) && st.tab === "dash") st.tab = "board"; st.bf = ""; };
   { const t0 = mem.get("tab", ""); if (t0 && TABS.some(t => t.id === t0)) st.tab = t0; mem.set("tab", ""); }
   fitTab();
-  st.bMode = mem.get("bmode", "grid") === "plan" ? "plan" : "grid";
+  st.bMode = ["plan", "stack"].includes(mem.get("bmode", "grid")) ? mem.get("bmode", "grid") : "grid";   // [web] stack = 건물 배치도
 
   // 작성자 = 로그인한 사람(claude.ai 계정) + 지금 부서. 저장은 계정 id만, 이름은 화면에 그릴 때마다 계정에서 읽는다.
   // 로그인 정보를 못 받으면(공개 링크로 들어온 사람 등) 이름 칸에 적은 이름을 쓴다.
@@ -827,7 +827,7 @@
     return `<section class="card">
       <div class="rbar" style="margin-bottom:6px">
         <h2 style="margin:0">현황판</h2>
-        <div class="seg2" role="group" aria-label="보기 방식"><button type="button" data-bmode="grid" aria-pressed="${mode === "grid"}">블록</button><button type="button" data-bmode="plan" aria-pressed="${mode === "plan"}">배치도</button></div>
+        <div class="seg2" role="group" aria-label="보기 방식"><button type="button" data-bmode="grid" aria-pressed="${mode === "grid"}">블록</button><button type="button" data-bmode="plan" aria-pressed="${mode === "plan"}">층 배치도</button><button type="button" data-bmode="stack" aria-pressed="${mode === "stack"}">건물 배치도</button></div>
       </div>
       ${fset ? `<p class="bfline">「${esc(K.label[st.bf] || "")}」 객실 ${countIn(fset)}실만 보는 중 <button type="button" class="lnk" data-bf="${esc(st.bf)}">전체 보기</button></p>` : ""}
       <div class="rbar">
@@ -841,7 +841,7 @@
       ${!demo ? liveLine() : ""}
       <details class="lgd" ${st.lgOpen ? "open" : ""}><summary>표시 설명</summary><div class="legend2"><span><span class="tf hot">긴급</span> 긴급 업무</span><span><span class="tf need">미확인</span> ${esc(OPS.deptName(st.role))} 화면에서 아직 안 본 것</span><span><span class="dct dc-FO">${icon("FO", 14)}1</span><span class="dct dc-HK">${icon("HK", 14)}1</span><span class="dct dc-FM">${icon("FM", 14)}1</span> 부서별 열린 업무(프론트·키핑·시설)</span><span><span class="dct dv">불출 1</span> 진행 중 불출</span></div><div class="legend2 lgcs"><b>칸 아래 띠 = 청소 단계</b>${Object.keys(CS).map(k => `<span class="lgc cs-${k}"><b>${CS[k][0]}</b>${esc(CS[k][1])}</span>`).join("")}<span>숙박 상태(퇴실·입실·연박·공실)는 호수 아래 글자</span>${canStage() ? `<span>${st.role === "HK" ? "키핑" : "관리자"}: 칸을 우클릭(휴대폰은 길게 누르기)하면 청소 단계를 바로 바꿀 수 있습니다</span>` : ""}</div></details>
     </section>
-    ${mode === "plan" ? planView(M, by, needIds, hotIds, q) : sections || `<div class="empty">해당하는 객실이 없습니다.</div>`}`;
+    ${mode === "plan" ? planView(M, by, needIds, hotIds, q) : mode === "stack" ? stackView(M, by, needIds, hotIds, q) : sections || `<div class="empty">해당하는 객실이 없습니다.</div>`}`;
   }
 
   // ---------- 현황 숫자(v0.10) ----------
@@ -1453,7 +1453,7 @@
   }
   const cmTarget = el => {
     if (!canStage() || boardM() === DEMO || !el || !el.closest) return null;
-    const t = el.closest("#view .rt[data-room], #view g.pr[data-room], #view .srow"); if (!t) return null;
+    const t = el.closest("#view .rt[data-room], #view g.pr[data-room], #view .sk[data-room], #view .srow"); if (!t) return null;
     if (t.dataset && t.dataset.room) return t.dataset.room;
     const b = t.querySelector("[data-id]"); return b ? b.dataset.id : null;
   };
@@ -1640,21 +1640,72 @@
     }
   });
 
+  // ---------- [web] 룸 믹스: 건물 전체 객실 중 누가 운영하는지(설정에서 올린 엑셀) ----------
+  const mixOf = name => (st.mix && st.mix.buildings || []).find(x => x.name === name) || null;
+  const opName = (mb, code) => (mb.ops[code] && mb.ops[code].name) || code || "?";
+  // 범례: 우리 객실 수, 운영사별 수, 객실 목록과 엑셀이 다른 객실
+  function mixLegend(mb, rooms, b) {
+    const M = st.master, ours = rooms.filter(x => M.rooms[OPS.Rooms.roomId(b, x.no)]);
+    const cnt = {}; rooms.forEach(x => { if (M.rooms[OPS.Rooms.roomId(b, x.no)]) return; const k = x.own === "ours" ? "목록 없음" : opName(mb, x.code); cnt[k] = (cnt[k] || 0) + 1; });
+    const warn = ours.filter(x => x.own !== "ours");
+    const acc = rooms.filter(x => x.acc);
+    return `<div class="mixl"><span class="mk ours">우리 객실 <b>${ours.length}</b></span>${Object.entries(cnt).sort((a, c) => c[1] - a[1]).map(([k, n]) => `<span class="mk other">${esc(k)} <b>${n}</b></span>`).join("")}${acc.length ? `<span class="mk">♿ 장애인 객실 ${acc.map(x => esc(x.no)).join("·")}</span>` : ""}</div>
+      ${warn.length ? `<p class="mixw">! 객실 목록(예약표)에는 있는데 룸 믹스에서는 우리 객실이 아닌 곳: ${warn.map(x => `${esc(x.no)}(${esc(opName(mb, x.code))})`).join(", ")}. 어느 쪽이 맞는지 확인해 주십시오.</p>` : ""}`;
+  }
+  // 건물 배치도: 층(위→아래) × 라인 표. 우리 객실은 오늘 상태, 타 운영사는 흐리게
+  function stackView(M, by, needIds, hotIds, q) {
+    if (!st.mix) return `<section class="card later-box"><h2>건물 배치도</h2><p class="sub">건물 전체(타 운영사 포함) 그림은 룸 믹스가 있어야 그립니다. 관리자 설정의 "룸 믹스"에서 Room_Mix 엑셀을 올려 주십시오.</p></section>`;
+    const withMix = M.buildings.filter(x => mixOf(x.name));
+    if (!st.pb || !withMix.some(x => x.id === st.pb)) st.pb = (withMix[0] || M.buildings[0] || {}).id;
+    const b = st.pb, bn = (M.buildings.find(x => x.id === b) || {}).name || "", mb = mixOf(bn);
+    const chips = `<div class="chips">${M.buildings.map(x => `<button type="button" data-pb="${esc(x.id)}" aria-pressed="${x.id === b}">${esc(x.name)}</button>`).join("")}</div>`;
+    if (!mb) return `<section class="card">${chips}<p class="sub">${esc(bn)}은(는) 룸 믹스에 없습니다. 엑셀 시트 이름이 "${esc(bn)}"인지 확인해 주십시오.</p></section>`;
+    const svcBy = new Map(); svcRows().forEach(x => svcBy.set(x.id, x));
+    const L = mb.lines;
+    const span = key => { const out = []; L.forEach(l => { const v = l[key] || ""; const last = out[out.length - 1]; if (last && last.v === v) last.n++; else out.push({ v, n: 1 }); }); return out; };
+    const head = (key, cls) => `<tr class="${cls}"><th></th>${span(key).map(g => `<th colspan="${g.n}">${esc(g.v)}</th>`).join("")}</tr>`;
+    const hasWing = L.some(l => l.wing);
+    const cell = x => {
+      if (!x) return `<td class="sk none"></td>`;
+      const id = OPS.Rooms.roomId(b, x.no);
+      if (!M.rooms[id]) return `<td class="sk other ${x.own === "ours" ? "lost" : ""}" title="${esc(x.no)}호 · ${esc(x.own === "ours" ? "우리 타입인데 객실 목록에 없음" : opName(mb, x.code))}${x.acc ? " · 장애인 객실" : ""}"><b>${esc(x.no)}</b><small>${esc(x.own === "ours" ? "?" : x.code)}</small></td>`;
+      const s = roomState(id, st.rdate), ts = by.get(id) || [], sv = svcBy.get(id), cs = sv ? cleanStage(sv) : null;
+      const cls = ["sk", "ours", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", cs ? "cs-" + cs.k : "", ts.length ? "has" : "", needIds.has(id) ? "need" : "", hotIds.has(id) ? "hot" : "", q && x.no.startsWith(q) ? "hit" : "", x.own !== "ours" ? "mixwarn" : ""].join(" ");
+      return `<td class="${cls}" data-room="${esc(id)}" tabindex="0" title="${esc(x.no)}호 · ${esc(x.code)}${s && s.stay ? " · " + esc(s.stay) : ""}${cs ? " · " + esc(cs.t) : ""}${ts.length ? " · 열린 업무 " + ts.length : ""}"><b>${esc(x.no)}</b><small>${cs ? CS[cs.k][0] : ""}${s && s.stay ? esc(STAY_SHORT[s.stay] || s.stay) : esc(x.code)}</small>${ts.length ? `<i class="skb">${ts.length}</i>` : ""}${x.acc ? `<i class="ska">♿</i>` : ""}</td>`;
+    };
+    const rows = mb.floors.map(f => { const at = new Map(f.rooms.map(x => [x.line, x])); return `<tr><th>${esc(f.f)}F</th>${L.map(l => cell(at.get(l.n))).join("")}</tr>`; }).join("");
+    const fac = (mb.facilities || []).map(x => `<tr class="fac"><th>${esc(x.f)}</th><td colspan="${L.length}">${esc(x.text)}</td></tr>`).join("");
+    const all = mb.floors.flatMap(f => f.rooms);
+    return `<section class="card">${chips}
+      <div class="skwrap"><table class="stack">
+        <thead>${hasWing ? head("wing", "wg") : ""}${head("dir", "dr")}<tr class="ln"><th></th>${L.map(l => `<th>${l.n}<small>${esc(l.type)}</small></th>`).join("")}</tr>
+          <tr class="ar"><th>㎡</th>${L.map(l => `<th>${l.area != null ? esc(String(l.area)) : ""}</th>`).join("")}</tr></thead>
+        <tbody>${rows}${fac}</tbody></table></div>
+      ${mixLegend(mb, all, b)}
+      <p class="sub" style="margin-top:6px">진한 칸 = 우리 객실(오늘 숙박·청소 단계, 누르면 상세). 흐린 칸 = 타 운영사(약자: ${Object.entries(mb.ops).map(([k, v]) => esc(k) + " " + esc(v.name)).join(" · ")}). 라인 머리 글자는 분양 평면 타입입니다. 룸 믹스: ${esc(st.mix.file || "")} ${st.mix.at ? "· " + esc(hm(st.mix.at)) + " 올림" : ""}</p>
+    </section>`;
+  }
   // ---------- 배치도 ----------
   function planView(M, by, needIds, hotIds, q) {
     const needIn = (b, f) => Array.from(needIds).filter(id => { const r = M.rooms[id]; return r && r.b === b && (f == null || OPS.Layout.floorOf(r.no) === f); }).length;
     if (!st.pb || !M.buildings.some(b => b.id === st.pb)) st.pb = (M.buildings.slice().sort((a, c) => needIn(c.id) - needIn(a.id))[0] || {}).id;
     const b = st.pb;
-    const floors = OPS.Layout.floors(M, b);
+    // [web] 룸 믹스·도면 위치가 있으면 그 동의 모든 층·모든 라인을 그린다(타 운영사는 흐리게)
+    const bn = (M.buildings.find(x => x.id === b) || {}).name || "", mb = mixOf(bn), geo = OPS.PlanGeo && OPS.PlanGeo[bn];
+    const floors = Array.from(new Set(OPS.Layout.floors(M, b).concat(mb ? mb.floors.map(x => x.f) : []))).sort((x, y) => +y - +x);
     if (q) { const hit = Object.values(M.rooms).find(r => r.b === b && r.no.startsWith(q)); if (hit) st.pFloor[b] = OPS.Layout.floorOf(hit.no); }
     if (!st.pFloor[b] || !floors.includes(st.pFloor[b])) st.pFloor[b] = floors.slice().sort((x, y) => needIn(b, y) - needIn(b, x))[0];
     const f = st.pFloor[b];
-    const L = OPS.Layout.get(M, b, f);
+    const L = geo ? OPS.Layout.get({ rooms: M.rooms, layouts: { [b]: { "기준": geo } } }, b, f) : OPS.Layout.get(M, b, f);
+    const fr = mb ? (mb.floors.find(x => x.f === f) || { rooms: [] }) : { rooms: [] };
+    const mixAt = new Map(fr.rooms.map(x => [x.no, x]));
+    const others = geo ? fr.rooms.filter(x => !M.rooms[OPS.Rooms.roomId(b, x.no)] && geo.rooms[String(x.line).padStart(2, "0")]) : [];
     const svcBy = new Map(); svcRows().forEach(x => svcBy.set(x.id, x));   // [web] 청소 단계 띠
     const room = it => {
       const id = OPS.Rooms.roomId(b, it.no), s = roomState(id, st.rdate), ts = by.get(id) || [];
       const cs = svcBy.has(id) ? cleanStage(svcBy.get(id)) : null;
-      const cls = ["pr", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", ts.length ? "has" : "", needIds.has(id) ? "need" : "", hotIds.has(id) ? "hot" : "", q && it.no.startsWith(q) ? "hit" : "", it.stray ? "stray" : "", cs ? "cs-" + cs.k : ""].join(" ");
+      const mx = mixAt.get(it.no), mixWarn = mx && mx.own !== "ours";   // [web] 객실 목록에는 있는데 룸 믹스에서는 우리 객실이 아님
+      const cls = ["pr", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", ts.length ? "has" : "", needIds.has(id) ? "need" : "", hotIds.has(id) ? "hot" : "", q && it.no.startsWith(q) ? "hit" : "", it.stray ? "stray" : "", cs ? "cs-" + cs.k : "", mixWarn ? "mixwarn" : ""].join(" ");
       const cx = it.x + it.w / 2;
       return `<g class="${cls}" data-room="${esc(id)}" role="button" aria-label="${esc(it.no)}호${ts.length ? ", 열린 업무 " + ts.length + "건" : ""}${needIds.has(id) ? ", 확인 필요" : ""}${cs ? ", 청소 " + esc(cs.t) : ""}">
         <rect class="bg" x="${it.x}" y="${it.y}" width="${it.w}" height="${it.h}" rx="6"/>
@@ -1663,7 +1714,17 @@
         <text class="sy" x="${cx}" y="${it.y + it.h / 2 + 11}" text-anchor="middle">${cs ? CS[cs.k][0] + " " : ""}${s && s.stay ? esc(STAY_SHORT[s.stay] || s.stay) : ""}</text>
         ${ts.length ? `<circle class="bd" cx="${it.x + it.w - 4}" cy="${it.y + 4}" r="9"/><text class="bdt" x="${it.x + it.w - 4}" y="${it.y + 8}" text-anchor="middle">${ts.length}</text>` : ""}
         ${hasNote(id) ? `<circle class="nd" cx="${it.x + 8}" cy="${it.y + 8}" r="3.5"/>` : ""}
+        ${mixWarn ? `<text class="mw" x="${it.x + 6}" y="${it.y + 16}">!</text>` : ""}${mx && mx.acc ? `<text class="acc" x="${it.x + it.w - 6}" y="${it.y + it.h - 14}" text-anchor="end">♿</text>` : ""}
       </g>`;
+    };
+    // [web] 타 운영사 칸: 흐리게, 누를 수 없음, 운영사 이름
+    const other = x => {
+      const g = geo.rooms[String(x.line).padStart(2, "0")], cx = g.x + g.w / 2;
+      const nm = x.own === "ours" ? "목록 없음" : (mb.ops[x.code] && mb.ops[x.code].name) || x.code || "?";
+      return `<g class="pr other ${x.own === "ours" ? "lost" : ""}" aria-label="${esc(x.no)}호 ${esc(nm)}"><title>${esc(x.no)}호 · ${esc(nm)}${x.acc ? " · 장애인 객실" : ""}</title>
+        <rect class="bg" x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="6"/>
+        <text class="no" x="${cx}" y="${g.y + g.h / 2 - 3}" text-anchor="middle">${esc(x.no)}</text>
+        <text class="sy" x="${cx}" y="${g.y + g.h / 2 + 12}" text-anchor="middle">${esc(g.w < 70 ? x.code : nm)}</text></g>`;
     };
     const feat = x => `<g class="pf ${esc(x.type || "")}"><rect x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="4"/>${x.label ? `<text x="${x.x + x.w / 2}" y="${x.y + x.h / 2 + 4}" text-anchor="middle">${esc(x.label)}</text>` : ""}</g>`;
     return `<section class="card">
@@ -1672,10 +1733,11 @@
       </div>
       <div class="chips fls">${floors.map(x => `<button type="button" data-pf="${esc(x)}" aria-pressed="${x === f}">${esc(x)}F${needIn(b, x) ? ` <b class="nb">${needIn(b, x)}</b>` : ""}</button>`).join("")}</div>
       <div class="pv" id="pv" data-key="${esc(b + "|" + f)}" data-w="${L.w}" data-h="${L.h}">
-        <div class="pz" id="pz"><svg width="${L.w}" height="${L.h}" viewBox="0 0 ${L.w} ${L.h}" xmlns="http://www.w3.org/2000/svg">${L.features.map(feat).join("")}${L.items.map(room).join("")}</svg></div>
+        <div class="pz" id="pz"><svg width="${L.w}" height="${L.h}" viewBox="0 0 ${L.w} ${L.h}" xmlns="http://www.w3.org/2000/svg">${L.features.map(feat).join("")}${others.map(other).join("")}${L.items.map(room).join("")}</svg></div>
         <div class="zb"><button type="button" data-zoom="in" aria-label="확대">+</button><button type="button" data-zoom="out" aria-label="축소">−</button><button type="button" data-zoom="fit" aria-label="화면 맞춤">맞춤</button></div>
       </div>
-      <p class="sub" style="margin-top:8px">${L.auto ? "간이 배치(가운데 엘리베이터, 좌우 객실, 동별로 이어 붙임)입니다. 실제 배치도 사진을 받으면 이 층 모양으로 바뀝니다. " : ""}${L.stray ? `배치도에 없는 객실 ${L.stray}개는 아래쪽에 따로 놓았습니다. ` : ""}두 손가락으로 확대·축소, 끌어서 이동, 객실을 누르면 상세가 열립니다.</p>
+      ${mb ? mixLegend(mb, fr.rooms, b) : ""}
+      <p class="sub" style="margin-top:8px">${geo ? "분양 도면의 라인 위치입니다(본관 B동은 세로로 세워 그림). " : ""}${!mb && geo ? "설정에서 룸 믹스를 올리면 타 운영사 객실도 흐리게 함께 보입니다. " : ""}${L.auto ? "간이 배치(가운데 엘리베이터, 좌우 객실, 동별로 이어 붙임)입니다. 실제 배치도 사진을 받으면 이 층 모양으로 바뀝니다. " : ""}${L.stray ? `배치도에 없는 객실 ${L.stray}개는 아래쪽에 따로 놓았습니다. ` : ""}두 손가락으로 확대·축소, 끌어서 이동, 객실을 누르면 상세가 열립니다.</p>
     </section>`;
   }
   function applyZoom() {
@@ -1894,6 +1956,7 @@
           <label class="f">비번 변경 담당 (비밀번호 제공 객실 퇴실 시)<select id="sPw">${OPS.DEPTS.filter(d => d.id !== "MG").map(d => `<option value="${d.id}" ${(S.pwDept || OPS.CTX.pwDept) === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></label>
           <button class="btn main" type="submit">저장</button>
         </form></section>
+      ${mixCard()}
       <section class="card"><h2>동과 객실 <span class="c">${M ? Object.keys(M.rooms).length : 0}실</span></h2>
         <p class="sub">${blds.length ? blds.map(b => `${esc(b.name)} ${Object.values(M.rooms).filter(r => r.b === b.id).length}실`).join(" · ") : "등록된 동이 없습니다."}${M && M.src && M.src.reservation ? ` · 예약표 ${esc(M.src.reservation.file)} (${esc(hm(M.src.reservation.at))})` : ""}</p>
         <form id="roomForm" class="new">
@@ -1928,6 +1991,29 @@
         <button type="button" class="btn" id="exportBtn">내보내기</button></section>
       <div class="msg" id="setMsg" aria-live="polite">${esc(st.setMsg)}</div>
     </div></div>`;
+  }
+  // [web] 설정: 룸 믹스 올리기(관리자). 파일 내용은 DB(property 모음의 mix 문서)에만 저장한다
+  function mixCard() {
+    const X = st.mix, M = st.master;
+    const cmp = X && M ? OPS.RoomMix.compare(X, M) : [];
+    return `<section class="card"><h2>룸 믹스 (건물 전체 운영 현황)</h2>
+      <p class="sub">본관·신관 시트가 있는 Room_Mix 엑셀을 올리면 층 배치도와 건물 배치도에 타 운영사 객실이 흐리게 함께 보입니다. 위탁 객실이 바뀌면 새 파일을 다시 올려 주십시오(이전 것을 덮어씁니다).</p>
+      ${X ? `<p class="sub">지금: <b>${esc(X.file || "")}</b> · ${esc(hm(X.at))} · ${esc(X.by || "")}<br>${X.buildings.map(b => `${esc(b.name)} 전체 ${b.count.ours + b.count.other + b.count.unknown}실 = 우리 ${b.count.ours} + 타 운영사 ${b.count.other}${b.count.unknown ? ` + 모르는 코드 ${b.count.unknown}` : ""}`).join(" / ")}</p>
+        ${cmp.map(c => c.missingBuilding ? `<p class="mixw">${esc(c.name)}: 객실 목록에 같은 이름의 동이 없습니다.</p>` : (c.notInList.length || c.notOurs.length) ? `<p class="mixw">${esc(c.name)} 대조: 객실 목록 ${c.listed}실 / 룸 믹스 우리 객실 ${c.ours}실.${c.notOurs.length ? ` 목록에만 있음(엑셀에선 타 운영사): ${c.notOurs.map(x => esc(x.no) + (x.code ? "(" + esc(x.code) + ")" : "")).join(", ")}.` : ""}${c.notInList.length ? ` 엑셀에만 있음: ${c.notInList.map(esc).join(", ")}.` : ""}</p>` : `<p class="sub">${esc(c.name)}: 객실 목록 ${c.listed}실과 룸 믹스 우리 객실이 일치합니다.</p>`).join("")}` : ""}
+      <label class="btn">${X ? "새 룸 믹스 올리기" : "룸 믹스 엑셀 고르기"}<input type="file" id="mixFile" accept=".xlsx,.xls" hidden></label>
+      <div class="msg" id="mixMsg" aria-live="polite">${esc(st.mixMsg || "")}</div></section>`;
+  }
+  async function loadMix(file) {
+    const say = t => { st.mixMsg = t; const m = $("mixMsg"); if (m) m.textContent = t; };
+    try {
+      say("읽는 중…");
+      const r = await OPS.RoomMix.readFile(file), a = actor();
+      const doc = { file: r.file, at: Date.now(), by: a.name || "", uid: a.uid || "", propertyId: OPS.CTX.propertyId, buildings: r.buildings };
+      await Store.set(COL.property, "mix", doc);
+      st.mix = Object.assign({ id: "mix" }, doc);
+      say("올렸습니다: " + r.buildings.map(b => `${b.name} 우리 ${b.count.ours} · 타 운영사 ${b.count.other}`).join(" / "));
+    } catch (e) { say("룸 믹스를 읽지 못했습니다: " + (e && e.message || e)); }
+    render();
   }
   function applySettings(S) {
     st.settings = S || null;
@@ -2237,6 +2323,7 @@
     if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches(".task, .arow[data-open], .rhl")) { e.preventDefault(); openTask(e.target.dataset.open); }
   });
   document.addEventListener("change", e => {
+    if (e.target.id === "mixFile" && e.target.files.length) { const f = e.target.files[0]; e.target.value = ""; loadMix(f); return; }
     if (e.target.id === "fKind") { st.formKind = e.target.value; st.formTo = null; const k = captureForm(); render(); restoreForm(k); }
     if (e.target.id === "fTo") st.formTo = e.target.value;
     if (e.target.id === "myPart") mem.set("part", e.target.value);
@@ -2486,7 +2573,7 @@
     Store.watch(COL.lostFound, list => { st.lost = list; if (st.tab === "desk" || st.tab === "dash" || st.openRoomId) soon(); }, err);
     Store.watch(COL.roomNotes, list => { const o = {}; list.forEach(x => { o[x.id] = x; }); st.notes = o; if (st.tab === "board" || st.openRoomId) soon(); }, err);
     Store.watch(COL.staff, list => { st.staff = list; soon(); }, err);
-    Store.watch(COL.property, list => { const m = list.find(x => x.id === "main"); st.master = m && m.rooms ? m : null; soon(); }, err);
+    Store.watch(COL.property, list => { const m = list.find(x => x.id === "main"); st.master = m && m.rooms ? m : null; st.mix = list.find(x => x.id === "mix") || null; soon(); }, err);   // [web] mix = 룸 믹스(건물 전체 운영 현황)
     Store.watch(COL.roomDays, list => { const o = {}; list.forEach(x => { o[x.id] = x; }); st.days = o; if (st.tab === "rooms" || st.tab === "board" || st.tab === "dash") soon(); }, err);
   })();
 }

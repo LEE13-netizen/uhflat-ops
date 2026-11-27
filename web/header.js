@@ -97,5 +97,17 @@
     document.addEventListener("keydown", e => { if (e.key === "Escape") close(); });
   }
 
+  // 고정 헤더 높이 → --headh. 미마감 알림 줄(.openbar)이 헤더 밑에 붙어 멈추게 한다(휴대폰은 헤더가 고정이 아니라 0)
+  function headH() {
+    const h = document.querySelector("body>header"); if (!h) return;
+    const v = getComputedStyle(h).position === "sticky" ? h.offsetHeight : 0;
+    document.documentElement.style.setProperty("--headh", v + "px");
+  }
+  addEventListener("DOMContentLoaded", () => {
+    headH(); addEventListener("resize", headH);
+    const h = document.querySelector("body>header");
+    if (h && window.ResizeObserver) new ResizeObserver(headH).observe(h);
+  });
+
   window.OPS_HEADER = { mount };
 })();

@@ -6,7 +6,27 @@
 (function () {
   const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const ROLE = { super_admin: "SYSTEM OWNER", dept_admin: "부서장", staff: "직원" };   // [web] 부서장 = 자기 부서 직원·권한 관리
-  const ACTION = { login: "로그인", login_locked: "로그인 잠금", pin_changed: "PIN 변경", pin_reset: "PIN 초기화", unlock: "잠금 해제", staff_create: "직원 추가", staff_update: "직원 정보 수정", staff_activate: "재활성화", staff_deactivate: "비활성화", staff_move_dept: "부서 이동", staff_delete: "직원 삭제", staff_set_role: "권한 변경", settings_update: "설정 변경", bootstrap_super_admin: "프로그램 관리자 계정 생성" };
+  const ACTION = { login: "로그인", login_locked: "로그인 잠금", pin_changed: "PIN 변경", pin_reset: "PIN 초기화", unlock: "잠금 해제", staff_create: "직원 추가", staff_update: "직원 정보 수정", staff_activate: "재활성화", staff_deactivate: "비활성화", staff_move_dept: "부서 이동", staff_delete: "직원 삭제", staff_set_role: "권한 변경", settings_update: "설정 변경", bootstrap_super_admin: "프로그램 관리자 계정 생성", ops_reset: "초기화(보관 후 비우기)", ops_restore: "초기화 되살리기", ops_reset_denied: "초기화 거절(PIN)", ops_restore_denied: "되살리기 거절(PIN)" };
+  // [web] 초기화(보관 후 비우기): 고를 수 있는 항목. 분실물·처리 이력·인수 확인·직원·설정·객실 목록은 대상이 아니다
+  const RESET_COLS = [["roomSvc", "청소·재실 기록(퇴실 완료·청소 단계·재실 요청·VIP·담당 변경)"], ["deliveries", "불출"], ["tasks", "업무(이슈·요청·수리) — 처리 이력은 남음"], ["roomNotes", "객실 비고"], ["manualStays", "직접 추가한 예약"], ["stock", "수건 재고"], ["roomDays", "날짜별 객실 상태(예약표·청소표 반영분)"], ["stayIndex", "투숙 기간(예약표)"]];
+  const rs = { counts: null, batches: null, msg: "", err: false, busy: false };
+  async function resetCall(body) { const r = await window.OPS.callFn("ops-reset", body); if (r.status !== 200) throw new Error((r.data && r.data.error) || "처리하지 못했습니다."); return r.data; }
+  async function resetLoad() { try { rs.counts = (await resetCall({ action: "preview" })).counts || {}; rs.batches = (await resetCall({ action: "batches" })).batches || []; } catch (e) { rs.msg = e.message; rs.err = true; } render(); }
+  function resetCard() {
+    const n = k => rs.counts ? (rs.counts[k] || 0) : "…", fmtB = b => new Date(b.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return `<section class="sp-card sp-reset"><h3>초기화 <span class="sp-c">보관 후 비우기 · SYSTEM OWNER 본인 PIN 필요</span></h3>
+      <p class="sp-g">고른 기록을 <b>지우지 않고 보관함으로 옮긴 뒤</b> 화면에서 비웁니다. 아래 "보관된 초기화"에서 언제든 되살릴 수 있습니다.<br>
+      <b>절대 비우지 않는 것</b>: 분실물 · 처리 이력 · 인수 확인 · 직원 계정 · 설정 · 객실 목록 · 의견함. 실행하면 감사 로그에 남습니다.</p>
+      ${rs.msg ? `<p class="sp-msg ${rs.err ? "err" : ""}">${esc(rs.msg)}</p>` : ""}
+      <form id="spReset" class="sp-form sp-resetf">
+        <fieldset class="sp-cols"><legend>비울 항목</legend>${RESET_COLS.map(([k, t]) => `<label class="sp-chk"><input type="checkbox" name="col" value="${k}" ${k === "stayIndex" || k === "roomDays" ? "" : "checked"}> ${esc(t)} <span class="sp-c">${n(k)}건</span></label>`).join("")}</fieldset>
+        <label>확인 문구 <span class="sp-c">"전체 초기화"라고 적기</span><input name="confirm" autocomplete="off" placeholder="전체 초기화"></label>
+        <label>내 PIN<input name="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="6자리"></label>
+        <button class="btn sp-del" ${rs.busy ? "disabled" : ""}>보관 후 초기화</button></form>
+      <h3 style="margin-top:16px">보관된 초기화</h3>
+      ${rs.batches == null ? `<p class="sp-g">불러오는 중…</p>` : !rs.batches.length ? `<p class="sp-g">아직 없습니다.</p>` : `<div class="scroll"><table class="sp-t"><thead><tr><th>시각</th><th>건수</th><th>항목</th><th></th></tr></thead><tbody>${rs.batches.map(b => `<tr><td>${esc(fmtB(b))}</td><td>${b.n}</td><td>${esc(Object.keys(b.cols || {}).map(k => ((RESET_COLS.find(x => x[0] === k) || [k, k])[1].split("(")[0]) + " " + b.cols[k]).join(", "))}</td><td>${b.restored ? `<span class="sp-c">되살림</span>` : `<form class="sp-form sp-restoref" data-batch="${esc(b.batch)}"><input name="pin" type="password" inputmode="numeric" maxlength="6" placeholder="내 PIN" autocomplete="off"><button class="btn sm">되살리기</button></form>`}</td></tr>`).join("")}</tbody></table></div>`}
+    </section>`;
+  }
   // 부서별 직급 목록(고르거나 직접 적을 수 있음)
   const TITLES = {
     FO: ["인턴", "프론트 사원", "주임", "대리", "프론트 매니저", "프론트 팀장"],
@@ -88,12 +108,13 @@
           <p class="sp-g">비활성화해도 그 직원이 남긴 업무 기록은 지워지지 않습니다. 잠금: 누적 10회 실패 15분, 15회 30분, 그 이상은 여기서 잠금 해제.</p></section>`;
       } else if (st.tab === "settings") {
         const s = st.data.settings || {};
+        if (rs.counts == null && !rs.loading) { rs.loading = true; resetLoad(); }
         body += `<section class="sp-card"><h3>일반 설정</h3><form id="spSet" class="sp-form">
           <label>자동 로그아웃(분)<input name="idle_logout_min" type="number" min="1" max="1440" value="${esc(s.idle_logout_min || 30)}"></label>
           <label class="sp-chk"><input type="checkbox" name="legacy_dept_login" ${s.legacy_dept_login ? "checked" : ""}> 부서 공용 PIN 병행 사용(기록용 — 실제 종료는 배포 설정과 함께)</label>
           <label class="sp-chk"><input type="checkbox" disabled ${s.otp_required ? "checked" : ""}> 관리자 2단계 인증(OTP) — 보류</label>
           <button class="btn main">저장</button></form>
-          <p class="sp-g">부서 관리자는 직원·권한 탭에서 직원별로 지정·해제합니다. 화면 조작이 없으면 설정한 시간 뒤 자동으로 로그인 화면으로 돌아갑니다.</p></section>`;
+          <p class="sp-g">부서 관리자는 직원·권한 탭에서 직원별로 지정·해제합니다. 화면 조작이 없으면 설정한 시간 뒤 자동으로 로그인 화면으로 돌아갑니다.</p></section>` + resetCard();
       } else {
         body += `<section class="sp-card"><h3>감사 로그 <span class="sp-c">최근 60건</span></h3>${st.logs ? `<div class="scroll"><table class="sp-t"><thead><tr><th>시각</th><th>누가</th><th>무엇을</th><th>대상</th></tr></thead><tbody>
           ${st.logs.map(l => `<tr><td>${fmt(l.at)}</td><td>${esc(nameOf(l.actor_id))}</td><td>${esc(ACTION[l.action] || l.action)}</td><td>${esc(l.target_id && l.target_id !== l.actor_id ? (l.before && l.before.name && l.action === "staff_delete" ? l.before.name : nameOf(l.target_id)) : "")}${l.after && l.after.login_id ? " (" + esc(l.after.login_id) + ")" : ""}</td></tr>`).join("")}</tbody></table></div>` : "불러오는 중…"}</section>`;
@@ -162,6 +183,18 @@
     if (f.id === "spAdd" || f.id === "spBoot") {
       const r = await act(() => call(Object.assign({ action: f.id === "spBoot" ? "bootstrap" : "create" }, v)), f.id === "spBoot" ? "프로그램 관리자 계정을 만들었습니다. 잠금 후 개인 아이디로 로그인하십시오." : "직원을 추가했습니다.");
       if (r && r.temp_pin) { st.shown = { name: v.name, pin: r.temp_pin, login_id: r.login_id }; render(); }
+    } else if (f.id === "spReset" || f.classList.contains("sp-restoref")) {
+      // [web] 초기화 · 되살리기
+      const isReset = f.id === "spReset", fd = new FormData(f), pin = String(fd.get("pin") || "");
+      const body = isReset ? { action: "reset", pin, confirm: String(fd.get("confirm") || ""), cols: fd.getAll("col") } : { action: "restore", pin, batch: f.dataset.batch };
+      if (isReset && !confirm(`고른 ${body.cols.length}개 항목을 보관함으로 옮기고 화면에서 비웁니다. 진행할까요?`)) return;
+      rs.busy = true; rs.msg = "처리 중…"; rs.err = false; render();
+      try {
+        const r = await resetCall(body);
+        rs.msg = isReset ? `초기화했습니다: ${Object.entries(r.counts || {}).map(([k, v]) => ((RESET_COLS.find(x => x[0] === k) || [k, k])[1].split("(")[0]) + " " + v + "건").join(", ")}. 보관함에서 되살릴 수 있습니다.` : `되살렸습니다: ${r.restored}건${r.skipped ? ` (같은 자리에 새 기록이 있어 ${r.skipped}건은 새 기록 유지)` : ""}.`;
+        rs.err = false; rs.counts = null; rs.loading = false;
+      } catch (err) { rs.msg = err.message; rs.err = true; }
+      rs.busy = false; render(); if (!rs.err) { rs.loading = true; resetLoad(); }
     } else if (f.id === "spSet") {
       await act(() => call({ action: "settings", idle_logout_min: Number(v.idle_logout_min), legacy_dept_login: !!v.legacy_dept_login }), "설정을 저장했습니다.");
     }

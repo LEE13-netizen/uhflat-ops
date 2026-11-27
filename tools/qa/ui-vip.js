@@ -57,7 +57,9 @@ const R = []; const rec = (id, ok, note) => { R.push({ id, ok }); console.log(`[
   rec('프론트에 입실 가능 알림', /입실 가능 확인/.test(foRow) && /VIP 준비 안 됨 1/.test(fbar2), `줄 "${foRow.slice(0, 70)}" · 알림 "${fbar2.slice(0, 50)}"`);
   // 5) 내일 미리 지정 가능, 내일 인스펙은 막힘
   await p.locator('[data-rdate="2026-12-03"]').first().click(); await p.waitForTimeout(300);
-  const tmr = Object.keys(seed.roomDays['2026-12-03'].rooms).find(k => seed.roomDays['2026-12-03'].rooms[k].stay === '퇴실·입실' && k.startsWith('main'));
+  // 12/3 당일 입실 객실(합성 예약 패턴에는 퇴·입이 없을 수 있어 입실 → 아무 본관 객실 순으로)
+  const R3 = seed.roomDays['2026-12-03'].rooms, k3 = Object.keys(R3).filter(k => k.startsWith('main') && k !== turn).sort();   // 앞에서 VIP로 지정한 방은 뺀다
+  const tmr = k3.find(k => R3[k].stay === '퇴실·입실') || k3.find(k => /입실/.test(R3[k].stay || '')) || k3[0];
   await p.click('#menuBtn'); await p.waitForTimeout(350); await p.locator('[data-tab="board"]').filter({ visible: true }).first().click(); await p.waitForTimeout(400);
   await room(tmr); await tap('#dlg [data-svc="vipset"]');
   const t1 = await doc(tmr, '2026-12-03'); const vb = p.locator('#dlg [data-svc="vipok"]'); let blocked = true;

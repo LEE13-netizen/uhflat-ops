@@ -1026,7 +1026,8 @@
         ${multiB() ? `<div class="chips">${[{ id: "all", name: "전체" }].concat(M.buildings).map(b => `<button type="button" data-rb="${esc(b.id)}" aria-pressed="${b.id === st.rb}">${esc(b.name)}</button>`).join("")}</div>` : ""}</div>
       <p class="sub" style="margin:8px 0 0">지금 <span data-now>${esc(hm(now))}</span> · 업무·청소·불출은 실시간${fresh.at ? ` · 객실 상태는 예약표 ${esc(hm(fresh.at))} 기준` : ""}${fresh.stale ? ` <span class="warnt">(어제 올린 예약표의 예정 값)</span>` : ""}${demo ? " · 객실 미등록이라 객실 숫자는 없습니다" : ""}</p></section>
       ${taskKpis}
-      <div class="dgrid">${readyHtml}${fieldCard}${deptCard}${oldCard}${respCard}${repCard}</div>`;
+      <div class="dgrid">${readyHtml}${fieldCard}${deptCard}${oldCard}${respCard}${repCard}</div>
+      ${dutyCard()}${opsLogCard()}`;
   }
 
   function readyCard(K) {
@@ -2552,6 +2553,191 @@
       ${ev.length ? `<div class="scroll"><table><thead><tr><th>시각</th><th>작성자</th><th>동작</th><th>업무</th><th>내용</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty">아직 기록이 없습니다.</div>`}</section>`;
   }
 
+  // ---------- [web] 근무 인원: 부서별 총 인원 + 근무 시작/끝(기록은 추가만) ----------
+  // 로그인이 아니라 사람이 누른 "근무 시작"·"근무 끝"으로 센다(공용 계정·켜 둔 기기 때문에 로그인은 사람 수가 아님).
+  // 근무 끝을 안 누르면 시작 14시간 뒤 자동으로 끝난 것으로 본다(기록은 고치지 않고 계산만).
+  const COL_DUTY = "duty", DUTY_MAX = 14 * 3600000, DUTY_DEPTS = ["FO", "HK", "FM"];
+  const canSeeNames = () => !OPS.Auth || !!(OPS.Auth.owner || OPS.Auth.head || OPS.isMgr(st.role));
+  async function loadRoster() {
+    if (!(OPS.SB && OPS.Auth)) return;
+    try {
+      const { data } = await OPS.SB.from("profiles").select("name, active, departments(code)").eq("active", true);
+      const R = {}; (data || []).forEach(p => { const c = p.departments && p.departments.code; if (c && p.name) (R[c] = R[c] || new Set()).add(p.name); });
+      st.roster = R; soon();
+    } catch (e) {}
+  }
+  // 부서 명단 = 개인 계정(활성) ∪ 직원 목록(활성). 같은 이름은 한 사람
+  function members(dept) {
+    const set = new Map(), add = n => { const k = normName(n); if (k && !set.has(k)) set.set(k, String(n).trim()); };
+    ((st.roster || {})[dept] || []).forEach(add);
+    (st.staff || []).filter(x => x.active !== false && x.dept === dept).forEach(x => add(x.name));
+    return [...set.values()].sort((a, b) => a.localeCompare(b));
+  }
+  const dutyKey = e => e.uid && e.personal ? "u:" + e.uid : "n:" + e.dept + ":" + normName(e.name);
+  // 사람별 근무 구간 [{key, dept, name, start, end(null이면 진행 중), auto}]
+  function dutySpans(events, now) {
+    const P = new Map(), out = [];
+    (events || []).slice().sort((a, b) => a.at - b.at).forEach(e => {
+      const k = dutyKey(e), cur = P.get(k);
+      if (e.type === "start") { if (cur && !cur.end) { cur.end = Math.min(e.at, cur.start + DUTY_MAX); cur.auto = true; } const sp = { key: k, dept: e.dept, name: e.name, uid: e.uid, start: e.at, end: null }; P.set(k, sp); out.push(sp); }
+      else if (e.type === "end" && cur && !cur.end) cur.end = e.at;
+    });
+    out.forEach(sp => { if (!sp.end && now - sp.start >= DUTY_MAX) { sp.end = sp.start + DUTY_MAX; sp.auto = true; } });
+    return out;
+  }
+  const dutyEvents = () => Object.values(st.dutyBy || {}).flat();
+  const onDuty = (now = Date.now()) => dutySpans(dutyEvents(), now).filter(sp => !sp.end);
+  // 이 기기의 "나": 개인 계정이면 계정, 공용 계정이면 이 기기에서 고른 이름
+  function dutyMe() {
+    const A = OPS.Auth;
+    if (A && A.kind === "personal") return { personal: true, uid: A.uid, name: A.name || "", dept: st.role };
+    const n = mem.get("dutyMe:" + st.role, "") || (st.role === "HK" ? myName() : "");
+    return n ? { personal: false, uid: "", name: n, dept: st.role } : null;
+  }
+  const myDuty = () => { const me = dutyMe(); if (!me) return null; const k = dutyKey(me); return onDuty().find(sp => sp.key === k) || null; };
+  async function dutyMark(type, who) {
+    const a = actor(), me = who || dutyMe();
+    if (!me || !me.name) { flash("이름을 먼저 골라 주십시오."); return; }
+    try {
+      await Store.add(COL_DUTY, { type, dept: me.dept, name: me.name, uid: me.uid || "", personal: !!me.personal, at: Date.now(), date: OPS.ymd(Date.now()), by: a.name || "", byUid: a.uid || "", propertyId: OPS.CTX.propertyId });
+      flash(`${me.name} 근무 ${type === "start" ? "시작" : "끝"} ${hm(Date.now()).split(" ")[1]}`);
+    } catch (e) { flash("저장 실패: " + (e && e.message || e)); }
+  }
+  // 오늘·어제 기록만 실시간으로 받는다(밤샘 근무 포함). 날짜가 바뀌면 다시 건다
+  let dutyOff = [];
+  function dutyWatch() {
+    const t = OPS.ymd(Date.now()); if (st.dutyDay === t) return; st.dutyDay = t;
+    dutyOff.forEach(f => { try { f(); } catch (e) {} }); st.dutyBy = {};
+    const y = OPS.ymd(Date.now() - 864e5);
+    dutyOff = [y, t].map(d => Store.watchWhere(COL_DUTY, "date", d, list => { st.dutyBy[d] = list; soon(); }, () => {}));
+  }
+  setInterval(() => { if (st.store) dutyWatch(); }, 60000);
+  function dutyCounts() {
+    const on = onDuty(), R = {};
+    DUTY_DEPTS.concat(OPS.isMgr(st.role) ? ["MG"] : []).forEach(d => { R[d] = { on: on.filter(sp => sp.dept === d), all: members(d) }; });
+    return R;
+  }
+  function dutyCard() {
+    const r = st.role, me = dutyMe(), mine = myDuty(), C = dutyCounts(), names = canSeeNames();
+    const pickNames = members(r).concat(r === "HK" ? asgNames() : []).filter((v, i, a) => a.findIndex(x => sameName(x, v)) === i);
+    const meLine = mine ? `<p><b>${esc(mine.name)}</b> 근무 중 · ${esc(hm(mine.start).split(" ")[1])}부터 <button type="button" class="btn sm" data-duty="end">근무 끝</button></p>`
+      : `<div class="rbar">${me && me.personal ? `<b>${esc(me.name)}</b>` : `<label class="f" style="margin:0">이름<select id="dutyName"><option value="">이름 고르기</option>${pickNames.map(n => `<option ${me && sameName(me.name, n) ? "selected" : ""}>${esc(n)}</option>`).join("")}<option value="__new">직접 입력…</option></select></label>`}
+        <button type="button" class="btn main" data-duty="start">근무 시작</button></div>`;
+    const row = d => { const c = C[d]; return `<div class="dutyr"><span class="dc dc-${d}">${icon(d, 14)}${esc(OPS.deptName(d))}</span><b>${c.on.length}</b><span class="w">/ 전체 ${c.all.length || "?"}명</span>
+      ${names && c.on.length ? `<div class="dutyn">${c.on.map(sp => `<span class="chip">${esc(sp.name)} ${esc(hm(sp.start).split(" ")[1])}${canSeeNames() ? ` <button type="button" class="lnk" data-dutyend="${esc(sp.key)}" aria-label="${esc(sp.name)} 근무 끝">끝</button>` : ""}</span>`).join("")}</div>` : ""}</div>`; };
+    return `<section class="card dutyc" id="dutyCard"><h2>근무 인원</h2>${meLine}
+      <div class="dutyl">${Object.keys(C).map(row).join("")}</div>
+      <p class="sub hint">로그인이 아니라 "근무 시작"을 누른 사람만 셉니다. 근무 끝을 누르지 않으면 14시간 뒤 자동으로 끝납니다. 전체는 활성 계정·직원 목록 기준(명단에 없으면 "?")입니다.${names ? "" : " 이름은 부서장·관리자에게만 보입니다."}</p></section>`;
+  }
+  // 근무 시작 전 알림(이 근무에서 닫으면 다시 안 뜸)
+  function dutyBar() {
+    if (st.locked || OPS.isMgr(st.role) || st.tab === "shift" || !st.store) return "";
+    if (myDuty() || mem.get("dutyHide", "") === String(shiftStart())) return "";
+    const me = dutyMe();
+    return `<div class="dutybar"><span>근무 시작 전입니다${me ? ` (${esc(me.name)})` : ""}.</span>${me ? `<button type="button" class="btn sm main" data-duty="start">근무 시작</button>` : `<button type="button" class="btn sm main" data-tab="shift">근무 시작(이름 고르기)</button>`}<button type="button" class="lnk" data-duty="hide">닫기</button></div>`;
+  }
+  document.addEventListener("click", async e => {
+    const b = e.target.closest("[data-duty]"); const be = e.target.closest("[data-dutyend]");
+    if (be) { const sp = onDuty().find(x => x.key === be.dataset.dutyend); if (sp && confirm(`${sp.name} 근무를 끝낼까요?`)) await dutyMark("end", { personal: sp.key.startsWith("u:"), uid: sp.uid, name: sp.name, dept: sp.dept }); render(); return; }
+    if (!b) return;
+    const a = b.dataset.duty;
+    if (a === "hide") { mem.set("dutyHide", String(shiftStart())); render(); return; }
+    if (a === "start") {
+      const sel = $("dutyName");
+      if (sel) { let v = sel.value; if (v === "__new") v = (prompt("이름") || "").trim().slice(0, 20); if (!v) { flash("이름을 골라 주십시오."); return; } mem.set("dutyMe:" + st.role, v); }
+      await dutyMark("start"); render(); return;
+    }
+    if (a === "end") { await dutyMark("end"); render(); }
+  });
+
+  // ---------- [web] 운영 기록: 몇 명이 근무했을 때 정비가 몇 시에 얼마나 끝났는지 + 고객 요청 처리 시간 ----------
+  // 지난 날짜의 청소 기록·근무 기록은 그날 것만 한 번 받아 둔다(전체를 받지 않는다)
+  function loadDay(col, date) {
+    return new Promise(res => { let off = null, done = false; const fin = list => { if (done) return; done = true; res(list || []); setTimeout(() => { try { off && off(); } catch (e) {} }, 0); };
+      off = Store.watchWhere(col, "date", date, fin, () => fin([])); setTimeout(() => fin([]), 15000); });
+  }
+  const median = a => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : Math.round((b[m - 1] + b[m]) / 2); };
+  const hhm = t => t ? hm(t).split(" ")[1] : "";
+  function dayStats(date, svcList, dutyList) {
+    const dd = dayDoc(date) || {}, M = boardM(), rooms = {}, svc = {};
+    if (M && M !== DEMO) Object.keys(M.rooms).forEach(id => { const rs = roomState(id, date); if (rs && rs.stay) rooms[id] = rs; });   // 직접 추가 예약까지 반영된 그날 상태
+    (svcList || []).forEach(x => { const id = String(x.id || "").split("__")[1] || x.roomId; if (id) svc[id] = x; });
+    const outIds = Object.keys(rooms).filter(id => /^퇴실/.test(rooms[id].stay || "") && !(svc[id] && svc[id].ext));
+    const stayIds = Object.keys(rooms).filter(id => rooms[id].stay === "연박");
+    const outDone = outIds.map(id => svc[id] && svc[id].done && svc[id].done.at).filter(Boolean).sort((a, b) => a - b);
+    const stayDone = stayIds.filter(id => svc[id] && svc[id].done).length;
+    const starts = Object.values(svc).map(x => x.start && x.start.at).filter(Boolean).sort((a, b) => a - b);
+    const dur = Object.values(svc).filter(x => x.start && (x.cleaned || x.done)).map(x => Math.round(((x.cleaned || x.done).at - x.start.at) / 60000)).filter(m => m > 0 && m < 600);
+    const reach = p => { const need = Math.ceil(outIds.length * p); return outIds.length && outDone.length >= need ? outDone[need - 1] : null; };
+    const d0 = new Date(date + "T00:00:00").getTime(), d1 = d0 + 864e5;
+    const spans = dutySpans(dutyList, d1).map(sp => ({ ...sp, end: sp.end || Math.min(Date.now(), sp.start + DUTY_MAX) }));
+    const hk = spans.filter(sp => sp.dept === "HK"), hours = [];
+    for (let h = 6; h <= 23; h++) { const t = d0 + h * 3600000 + 1800000; hours.push({ h, future: d0 + h * 3600000 > Date.now(), hk: hk.filter(sp => sp.start <= t && sp.end > t).length, out: outDone.filter(x => x <= d0 + (h + 1) * 3600000).length }); }
+    const hkHours = hk.reduce((a, sp) => a + Math.max(0, Math.min(sp.end, d1) - Math.max(sp.start, d0)), 0) / 3600000;
+    const sheetN = new Set(Object.values(dd.assign || {}).flatMap(splitNames).map(normName)).size;
+    const inDay = t => t >= d0 && t < d1;
+    const req = st.tasks.filter(t => t.kind === "request" && inDay(t.createdAt)), reqDone = req.filter(t => t.doneAt);
+    const dv = (st.delivAll || []).filter(d => d.date === date && !d.cancel), dvDone = dv.filter(d => d.done && d.done.at);
+    return { date, has: !!(dayDoc(date) || (svcList || []).length || (dutyList || []).length), out: outIds.length, outDone: outDone.length, stay: stayIds.length, stayDone, first: starts[0] || null, t50: reach(0.5), t90: reach(0.9), t100: reach(1), last: outDone[outDone.length - 1] || null,
+      by: [12, 13, 14, 15].map(h => outDone.filter(x => x <= d0 + h * 3600000).length), cleanMin: median(dur),
+      hkPeak: Math.max(0, ...hours.map(x => x.hk)), hkHours: Math.round(hkHours * 10) / 10, sheetN, fo: new Set(spans.filter(sp => sp.dept === "FO").map(sp => sp.key)).size, fm: new Set(spans.filter(sp => sp.dept === "FM").map(sp => sp.key)).size,
+      perHr: hkHours >= 1 ? Math.round((outDone.length + stayDone) / hkHours * 10) / 10 : null, perHead: sheetN ? Math.round((outDone.length + stayDone) / sheetN * 10) / 10 : null,
+      req: req.length, reqDone: reqDone.length, reqMin: median(reqDone.map(t => Math.round((t.doneAt - t.createdAt) / 60000))), reqOpen: req.filter(t => Core.isOpen(t)).length,
+      dv: dv.length, dvDone: dvDone.length, dvMin: median(dvDone.map(d => Math.round((d.done.at - d.at) / 60000))), hours };
+  }
+  const olog = () => st.olog || (st.olog = { n: 7, sel: "", data: {}, busy: false });
+  async function ologLoad(dates) {
+    const O = olog(); if (O.busy) return; O.busy = true;
+    try { for (const d of dates) { if (O.data[d]) continue; const [svc, duty] = await Promise.all([loadDay(COL.roomSvc, d), loadDay(COL_DUTY, d)]); O.data[d] = { svc, duty, at: Date.now() }; } }
+    finally { O.busy = false; soon(); }
+  }
+  function ologChart(x) {
+    const W = 640, H = 180, L = 30, R = 34, T = 14, B = 26, n = x.hours.length, bw = (W - L - R) / n, maxHk = Math.max(1, x.hkPeak), maxOut = Math.max(1, x.out);
+    const X = i => L + i * bw, Yh = v => H - B - v / maxHk * (H - T - B), Yo = v => H - B - v / maxOut * (H - T - B);
+    const bars = x.hours.map((o, i) => `<rect x="${X(i) + 2}" y="${Yh(o.hk)}" width="${bw - 4}" height="${H - B - Yh(o.hk)}" class="ob-bar"><title>${o.h}시 키핑 근무 ${o.hk}명</title></rect>`).join("");
+    const past = x.hours.filter(o => !o.future);   // 오늘은 지금 시각까지만 선을 긋는다
+    const line = past.map((o, i) => `${i ? "L" : "M"}${X(i) + bw / 2},${Yo(o.out)}`).join(" ");
+    const dots = past.map((o, i) => `<circle cx="${X(i) + bw / 2}" cy="${Yo(o.out)}" r="3" class="ob-dot"><title>${o.h + 1}시까지 퇴실 정비 완료 ${o.out}/${x.out}</title></circle>`).join("");
+    const ticks = x.hours.filter((o, i) => i % 2 === 0).map(o => `<text x="${X(o.h - 6) + bw / 2}" y="${H - 8}" class="ob-t">${o.h}</text>`).join("");
+    return `<svg class="ochart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(x.date)} 시간대별 키핑 근무 인원과 퇴실 정비 누적 완료">
+      <line x1="${L}" y1="${H - B}" x2="${W - R}" y2="${H - B}" class="ob-ax"/>${bars}<path d="${line}" class="ob-line"/>${dots}${ticks}
+      <text x="${L - 4}" y="${T + 4}" class="ob-t" text-anchor="end">${maxHk}명</text><text x="${W - R + 4}" y="${T + 4}" class="ob-t">${maxOut}실</text></svg>
+      <p class="olg"><span class="k bar"></span>키핑 근무 인원(시간대) <span class="k line"></span>퇴실 정비 누적 완료</p>`;
+  }
+  function opsLogCard() {
+    const O = olog(), today = OPS.ymd(Date.now()), dates = [];
+    for (let i = 0; i < O.n; i++) dates.push(OPS.ymd(Date.now() - i * 864e5));
+    const live = d => d === today && st.rdate === today;   // 오늘을 보고 있으면 실시간 값
+    const need = dates.filter(d => !live(d) && !O.data[d]);
+    if (need.length && !O.busy) setTimeout(() => ologLoad(need), 0);
+    const rows = dates.map(d => live(d) ? dayStats(d, Object.values(st.svc || {}).filter(x => String(x.id || "").startsWith(today + "__")), dutyEvents().filter(e => e.date === today)) : O.data[d] ? dayStats(d, O.data[d].svc, O.data[d].duty) : null);
+    const sel = O.sel && dates.includes(O.sel) ? O.sel : today, xs = rows.find(x => x && x.date === sel);
+    O.rows = rows.filter(Boolean);
+    const f = v => v == null ? "—" : v, tm = t => t ? hhm(t) : "—", mn = m => m == null ? "—" : D2(m);
+    const tr = x => !x.has ? `<tr class="nod"><td>${esc(x.date.slice(5).replace("-", "/"))}</td><td colspan="7">기록 없음(예약표·청소·근무 기록이 없는 날)</td></tr>` : `<tr class="${x.date === sel ? "on" : ""}" data-ologsel="${esc(x.date)}"><td>${esc(x.date.slice(5).replace("-", "/"))}</td><td>${x.hkPeak || "—"} / ${x.sheetN || "—"}</td><td>${x.outDone}/${x.out}</td><td>${tm(x.t50)} · ${tm(x.t90)} · ${tm(x.t100)}</td><td>${x.by.join(" · ")}</td><td>${f(x.perHr)}${x.perHead != null ? ` <small>(1인 ${x.perHead})</small>` : ""}</td><td>${x.req} <small>${mn(x.reqMin)}</small></td><td>${x.dv} <small>${mn(x.dvMin)}</small></td></tr>`;
+    return `<section class="card olog" id="olog"><div class="rbar" style="margin:0"><h2 style="margin:0">운영 기록 <span class="sub" style="margin:0;font-weight:500">인원 · 정비 · 고객 요청</span></h2>
+        <div class="chips">${[7, 14, 30].map(n => `<button type="button" data-ologn="${n}" aria-pressed="${O.n === n}">${n}일</button>`).join("")}</div><button type="button" class="btn sm" data-olog="csv">CSV 내려받기</button></div>
+      ${xs ? `<h3 class="mini" style="margin-top:10px">${esc(sel.slice(5).replace("-", "/"))} 시간대별</h3>${ologChart(xs)}
+        <p class="sub" style="margin:4px 0 0">키핑 근무 최대 <b>${xs.hkPeak}</b>명(근무 ${xs.hkHours}시간) · 청소표 담당 ${xs.sheetN}명 · 프론트 ${xs.fo} · 시설 ${xs.fm} | 퇴실 정비 ${xs.outDone}/${xs.out}실, 첫 시작 ${tm(xs.first)}, 50% ${tm(xs.t50)}, 90% ${tm(xs.t90)}, 끝 ${tm(xs.t100)}${xs.t100 ? "" : ` (마지막 완료 ${tm(xs.last)})`} · 1실 청소 ${mn(xs.cleanMin)} · 재실 정비 ${xs.stayDone}/${xs.stay} | 고객 요청 ${xs.req}건(완료 ${xs.reqDone}, 처리 ${mn(xs.reqMin)}${xs.reqOpen ? `, 열림 ${xs.reqOpen}` : ""}) · 불출 ${xs.dv}건(처리 ${mn(xs.dvMin)})</p>` : ""}
+      <div class="scroll"><table class="ologt"><thead><tr><th>날짜</th><th>키핑 근무 최대 / 청소표 담당</th><th>퇴실 정비</th><th>50% · 90% · 끝</th><th>12·13·14·15시 완료</th><th>방/인·시간</th><th>고객 요청 <small>처리</small></th><th>불출 <small>처리</small></th></tr></thead>
+      <tbody>${rows.map(x => x ? tr(x) : "").join("")}</tbody></table></div>
+      ${need.length ? `<p class="sub">지난 ${need.length}일 기록을 불러오는 중…</p>` : ""}
+      <p class="sub hint">처리 시간은 가운데 값(등록 → 완료). 근무 인원은 "근무 시작"을 누른 사람 기준이라, 누르지 않은 날은 청소표 담당 수로 비교하십시오. 방/인·시간 = (퇴실+재실 정비 완료) ÷ 키핑 근무 시간 합. 줄을 누르면 위 그래프가 그날로 바뀝니다.</p></section>`;
+  }
+  const D2 = m => m >= 60 ? Math.floor(m / 60) + "시간 " + (m % 60) + "분" : m + "분";
+  function ologCsv() {
+    const rows = (olog().rows || []).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+    const H = ["날짜", "키핑근무최대", "키핑근무시간", "청소표담당", "프론트근무", "시설근무", "퇴실", "퇴실완료", "첫시작", "50%", "90%", "끝", "12시완료", "13시완료", "14시완료", "15시완료", "1실청소분", "재실", "재실완료", "방per인시간", "1인당", "고객요청", "요청완료", "요청처리분", "불출", "불출완료", "불출처리분"];
+    const L = rows.map(x => [x.date, x.hkPeak, x.hkHours, x.sheetN, x.fo, x.fm, x.out, x.outDone, hhm(x.first), hhm(x.t50), hhm(x.t90), hhm(x.t100), ...x.by, x.cleanMin ?? "", x.stay, x.stayDone, x.perHr ?? "", x.perHead ?? "", x.req, x.reqDone, x.reqMin ?? "", x.dv, x.dvDone, x.dvMin ?? ""]);
+    const csv = "﻿" + [H].concat(L).map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); a.download = `운영기록_${OPS.ymd(Date.now())}.csv`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  document.addEventListener("click", e => {
+    const n = e.target.closest("[data-ologn]"); if (n) { olog().n = +n.dataset.ologn; render(); return; }
+    const r = e.target.closest("[data-ologsel]"); if (r) { olog().sel = r.dataset.ologsel; render(); return; }
+    if (e.target.closest('[data-olog="csv"]')) ologCsv();
+  });
+
   // ---------- [web] 교대·인수인계 + 근무 마감(1차) ----------
   // 남은 것을 부서별로 자동으로 모으고, 다음 근무자에게 메모를 남긴다. 남은 것이 있으면 이유를 적어야 마감된다.
   // 기록(handovers)은 추가만 된다(DB에서도 고치기·지우기 막음).
@@ -2594,7 +2780,7 @@
       <p class="sub hint">마감 기록은 고치거나 지울 수 없습니다. 남은 업무는 그대로 다음 근무의 "넘어온 것"으로 갑니다.</p></section>`;
     const list = `<section class="card"><h2>인수인계 기록 <span class="c">${hos.length}</span></h2>${hos.length ? `<div class="hvh">${hos.map(h => `<div class="hvr"><div class="sh"><b>${esc(hm(h.at))}</b> <span class="dc dc-${esc(h.dept)}">${icon(h.dept, 14)}${esc(OPS.deptName(h.dept))}</span> ${esc(nameOf(h.uid, h.by) || h.by || "")}${h.leftTotal ? ` · <span class="warnt">남김 ${h.leftTotal}건</span>` : " · 남김 없음"}</div>
         ${h.memo ? `<div class="sx">메모: ${esc(h.memo)}</div>` : ""}${h.why ? `<div class="sx">이유: ${esc(h.why)}</div>` : ""}${h.left && h.left.length ? `<div class="sx w">${h.left.map(x => esc(x.label) + " " + x.n).join(" · ")}</div>` : ""}</div>`).join("")}</div>` : `<div class="empty">아직 마감 기록이 없습니다.</div>`}</section>`;
-    return `<div class="cols"><div>${leftCard}${form}</div><div>${list}</div></div>`;
+    return `<div class="cols"><div>${dutyCard()}${leftCard}${form}</div><div>${list}</div></div>`;
   }
   async function closeShift() {
     const r = st.role, L = leftItems(r), tot = L.reduce((a, x) => a + x.n, 0), a = actor();
@@ -2602,6 +2788,7 @@
     if (tot && !why) { flash("남은 것이 있으면 넘기는 이유를 적어 주십시오."); if ($("hvWhy")) $("hvWhy").focus(); return; }
     try {
       await Store.add(COL_HV, { dept: r, date: OPS.ymd(Date.now()), at: Date.now(), shiftStart: shiftStart(), by: a.name || "", uid: a.uid || "", role: r, propertyId: OPS.CTX.propertyId, memo, why, leftTotal: tot, left: L.map(x => ({ label: x.label, n: x.n })) });
+      if (myDuty()) await dutyMark("end");   // [web] 근무 마감한 사람은 근무 끝도 함께
       flash(`${OPS.deptName(r)} 근무 마감을 남겼습니다${tot ? ` (남김 ${tot}건)` : ""}.`);
     } catch (e) { flash("마감 실패: " + (e && e.message || e)); }
     render();
@@ -2691,7 +2878,7 @@
     // 현황판이 바탕화면. 다른 화면은 위에 "현황판" 돌아가기 줄을 붙인다
     const tabName = (TABS.find(t => t.id === st.tab) || {}).name || "";
     const back = st.tab === "board" ? "" : `<div class="backbar"><button type="button" class="home" data-tab="board"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>현황판</button><h1>${esc(tabName)}</h1></div>`;
-    $("view").innerHTML = dropMsgHtml() + back + (st.tab === "dash" ? dashView() : st.tab === "board" ? boardView() : st.tab === "inbox" ? inboxView() : st.tab === "svc" ? svcView() : st.tab === "desk" ? deskView() : st.tab === "work" ? hubView() : st.tab === "log" ? logView() : st.tab === "rooms" ? archView() : st.tab === "settings" ? settingsView() : st.tab === "shift" ? shiftView() : laterView(st.tab));
+    $("view").innerHTML = dropMsgHtml() + back + dutyBar() + (st.tab === "dash" ? dashView() : st.tab === "board" ? boardView() : st.tab === "inbox" ? inboxView() : st.tab === "svc" ? svcView() : st.tab === "desk" ? deskView() : st.tab === "work" ? hubView() : st.tab === "log" ? logView() : st.tab === "rooms" ? archView() : st.tab === "settings" ? settingsView() : st.tab === "shift" ? shiftView() : laterView(st.tab));
     if (keep) restoreForm(keep);
     restoreInputs(keepD);
     if (rqFocus && $(rqFocus)) { const i = $(rqFocus); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
@@ -3182,6 +3369,7 @@
     Store.watch(COL.deliveries, list => { st.delivAll = list; dayFilter(); if (st.tab === "work" || st.tab === "rooms" || st.tab === "board" || st.tab === "dash") soon(); }, err);
     Store.watch(COL.stock, list => { st.stockAll = list; dayFilter(); if (st.tab === "desk" || st.tab === "svc") soon(); }, err);
     Store.watch(COL_HO, list => { st.handoffs = list; if (st.tab === "work") soon(); }, err);
+    dutyWatch(); loadRoster();   // [web] 근무 인원
     Store.watch(COL_HV, list => { st.handovers = list; if (st.tab === "work" || st.tab === "shift") soon(); }, err);   // [web] 근무 마감·인수인계   // [web] 인수 확인 기록
     setInterval(() => {
       const t = OPS.ymd(Date.now());

@@ -483,3 +483,26 @@ body.nohint .hint{display:none!important}
 .hvh{display:grid;gap:10px}
 .hvr{border-bottom:1px solid var(--line);padding-bottom:8px}
 .hvr .sh{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+/* [web] 근무 인원 · 운영 기록 */
+.dutybar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 12px;padding:10px 14px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-bg);font-weight:600}
+.dutyl{display:grid;gap:8px;margin:10px 0}
+.dutyr{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.dutyr>b{font-size:22px}
+.dutyn{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px}
+.olog .ologt{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+.olog .ologt th,.olog .ologt td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.olog .ologt th:first-child,.olog .ologt td:first-child{text-align:left}
+.olog .ologt tbody tr{cursor:pointer}
+.olog .ologt tr.on td{background:var(--accent-bg)}
+.olog small{color:var(--muted)}
+.ochart{width:100%;height:auto;max-height:220px;margin-top:6px}
+.ochart .ob-bar{fill:var(--soft);stroke:var(--line)}
+.ochart .ob-line{fill:none;stroke:var(--accent);stroke-width:2.5}
+.ochart .ob-dot{fill:var(--accent)}
+.ochart .ob-ax{stroke:var(--line)}
+.ochart .ob-t{fill:var(--muted);font-size:11px;text-anchor:middle}
+.olg{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:2px 0 0;font-size:12px;color:var(--muted)}
+.olg .k{display:inline-block;width:14px;height:10px;border-radius:2px}
+.olg .k.bar{background:var(--soft);border:1px solid var(--line)}
+.olg .k.line{height:3px;background:var(--accent)}
+.olog .ologt tr.nod td{color:var(--muted);text-align:left;cursor:default}

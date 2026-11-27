@@ -20,6 +20,9 @@ stays.forEach((id, i) => { svc[D1 + '__' + id] = { date: D1, roomId: id, reply: 
 const tasks = {}; [30, 60, 90].forEach((m, i) => { const c = T(D1, '10:00') + i * 600000; tasks['t' + i] = { kind: 'request', title: '고객 요청 ' + i, status: '완료', priority: '보통', fromDept: 'FO', toDept: 'HK', createdAt: c, updatedAt: c + m * 60000, doneAt: c + m * 60000, room: '' }; });
 const deliveries = {}; [20, 40].forEach((m, i) => { const a = T(D1, '14:00') + i * 600000; deliveries['v' + i] = { date: D1, roomId: outs[i], at: a, items: [], done: { at: a + m * 60000 } }; });
 Object.assign(seed, { staff, duty, roomSvc: svc, tasks, deliveries });
+// 기대값은 데이터에서 계산(실제 예약 패턴 56실 / 합성 패턴 등 퇴실 수가 달라도 맞게)
+const NO = outs.length, at = i => T(D1, '10:00') + i * 180000 + 2400000, hhmm = t => new Date(t + 9 * 3600e3).toISOString().slice(11, 16);
+const E = { end: hhmm(at(NO - 1)), p50: hhmm(at(Math.ceil(NO * 0.5) - 1)), p90: hhmm(at(Math.ceil(NO * 0.9) - 1)), perHr: String(Math.round((NO + 20) / 32 * 10) / 10) };
 const R = []; const rec = (id, ok, note) => { R.push(ok); console.log(`[${ok ? 'PASS' : 'FAIL'}] ${id} — ${note}`); };
 (async () => {
   const b = await chromium.launch();
@@ -49,16 +52,16 @@ const R = []; const rec = (id, ok, note) => { R.push(ok); console.log(`[${ok ? '
   // 2) 관리자: 운영 기록
   await open('mg', '10:00'); await go('dash'); await p.waitForTimeout(1200);
   const row = (await p.locator('#olog tr[data-ologsel="2026-12-01"]').innerText()).replace(/\s+/g, ' ');
-  rec('운영 기록 12/1 줄(키핑 4명 · 퇴실 56/56 · 끝 13:25 · 2.4방/인시)', /^12\/01 4 \/ — 56\/56/.test(row) && /13:25/.test(row) && / 2\.4/.test(row), row);
+  rec(`운영 기록 12/1 줄(키핑 4명 · 퇴실 ${NO}/${NO} · ${E.p50}/${E.p90}/${E.end} · ${E.perHr}방/인시)`, row.startsWith(`12/01 4 / — ${NO}/${NO} ${E.p50} · ${E.p90} · ${E.end}`) && row.includes(' ' + E.perHr + ' '), row);
   rec('고객 요청 3건 처리 1시간 · 불출 2건 30분', /3 1시간 0분/.test(row) && /2 30분/.test(row), row);
   await p.click('#olog tr[data-ologsel="2026-12-01"]'); await p.waitForTimeout(400);
   const sum = (await p.locator('#olog').innerText()).replace(/\s+/g, ' ');
   const svg = await p.locator('#olog svg.ochart rect').count();
-  rec('그날 시간대 그래프 + 요약', svg === 18 && /키핑 근무 최대 4명\(근무 32시간\)/.test(sum) && /프론트 2/.test(sum) && /50% 12:01/.test(sum), `막대 ${svg} · ${sum.match(/키핑 근무 최대[^|]*/)?.[0]}`);
+  rec('그날 시간대 그래프 + 요약', svg === 18 && /키핑 근무 최대 4명\(근무 32시간\)/.test(sum) && /프론트 2/.test(sum) && sum.includes('50% ' + E.p50), `막대 ${svg} · ${sum.match(/키핑 근무 최대[^|]*/)?.[0]}`);
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('[data-olog="csv"]')]);
   const csv = fs.readFileSync(await dl.path(), 'utf8');
   const line = csv.split('\r\n').find(l => l.startsWith('"2026-12-01"')) || '';
-  rec('CSV 내려받기', /^﻿"날짜"/.test(csv) && /"56","56"/.test(line) && /"13:25"/.test(line), `${dl.suggestedFilename()} · ${line.slice(0, 90)}`);
+  rec('CSV 내려받기', /^﻿"날짜"/.test(csv) && line.includes(`"${NO}","${NO}"`) && line.includes(`"${E.end}"`), `${dl.suggestedFilename()} · ${line.slice(0, 90)}`);
   await p.locator('#olog').screenshot({ path: S + '/shots/olog.png' });
   if (errs.length) { console.log('errors', errs); R.push(false); }
   await b.close(); console.log(`pass ${R.filter(Boolean).length}/${R.length}`);

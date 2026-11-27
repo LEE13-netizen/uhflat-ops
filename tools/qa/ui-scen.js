@@ -26,7 +26,8 @@ const col = c => cur.evaluate(k => JSON.parse(localStorage.getItem('opsFrame:v1:
 const dlgText = () => cur.evaluate(() => (document.getElementById('dlg').innerText || '').replace(/\n+/g, ' | '));
 const viewText = () => cur.evaluate(() => (document.getElementById('view').innerText || '').replace(/\n+/g, ' | '));
 const has = async (sel) => (await cur.locator(sel).filter({ visible: true }).count()) > 0;
-const openRoom = async id => { await tap(cur.locator(`[data-room="${id}"]`).first()); await cur.waitForTimeout(300); };
+// 객실 칸은 현황판에 있다. 키핑(첫 화면 청소·재실)·시설(첫 화면 작업대)은 현황판으로 먼저 간다(사람도 같은 탭 수)
+const openRoom = async id => { if (!(await cur.locator(`[data-room="${id}"]`).filter({ visible: true }).count())) await menu('board'); await tap(cur.locator(`[data-room="${id}"]`).first()); await cur.waitForTimeout(300); };
 const closeDlg = async () => { if (await has('#dlgX')) await tap(cur.locator('#dlgX')); };
 const shot = n => cur.screenshot({ path: `${S}/shots/scen-${n}.png`, fullPage: false });
 async function step(id, fn) { if (process.env.ONLY && !new RegExp(process.env.ONLY).test(id)) return; try { await fn(); } catch (e) { rec(id, 'ERROR', e.message.split('\n')[0].slice(0, 120) + ' :: ' + e.message.split('\n').filter(l => /intercept|not visible|not stable|detached|outside/.test(l)).slice(-2).join(' / ').slice(0, 300)); await shot('err-' + id).catch(() => {}); } }
@@ -34,7 +35,7 @@ async function step(id, fn) { if (process.env.ONLY && !new RegExp(process.env.ON
 (async () => {
   browser = await chromium.launch();
   ctx = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
-  await ctx.addInitScript(s => { try { if (!localStorage.getItem('opsFrame:v1:property')) for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); } catch (e) {} }, seed);
+  await ctx.addInitScript(s => { try { ['FO','HK','FM','MG'].forEach(r => localStorage.setItem('opsFrameUi:guided:' + r, '1')); } catch (e) {} try { if (!localStorage.getItem('opsFrame:v1:property')) for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); } catch (e) {} }, seed);
 
   // ===== A. 체크아웃 → 정비 → 입실 가능 (본관 206, 퇴실·입실) =====
   await step('A1 프론트 퇴실 완료(현황판→객실→버튼)', async () => {
@@ -168,17 +169,17 @@ async function step(id, fn) { if (process.env.ONLY && !new RegExp(process.env.ON
   });
   await step('D2 청소·객실 상태도 인수인계에 들어가는가', async () => {
     const t = await viewText();
-    rec('D2 청소·객실 상태도 인수인계에 들어가는가', /입실 가능 아님|청소 안 된|미완료 객실/.test(t) ? 'PASS' : 'FAIL', '넘어온 것은 업무·불출만. 22시에 아직 입실 가능이 아닌 퇴실 객실·안 한 재실 청소·메모형 전달사항은 인수인계에 안 들어감');
+    rec('D2 청소·객실 상태도 인수인계에 들어가는가', /입실 가능 아님|청소 안 된|미완료 객실/.test(t) ? 'PASS' : 'FAIL', /입실 가능 아님|청소 안 된|미완료 객실/.test(t) ? '작업대 "교대 전달"에 객실 미완료(입실 가능 아님·청소 안 된 재실)가 보임' : '넘어온 것은 업무·불출만. 객실 상태·메모형 전달사항이 인수인계에 안 들어감');
   });
   await step('D3 교대·인수인계 화면', async () => {
     await menu('shift'); const t = await viewText();
-    rec('D3 교대·인수인계 화면', /3단계에서 구현/.test(t) ? 'FAIL' : 'PASS', '미구현("3단계에서 구현합니다")');
+    rec('D3 교대·인수인계 화면', /3단계에서 구현/.test(t) ? 'FAIL' : 'PASS', /3단계에서 구현/.test(t) ? '미구현("3단계에서 구현합니다")' : '교대·인수인계 화면: 남은 것 자동 수집·메모·마감');
   });
 
   // ===== E. 마감 =====
   await step('E1 업무 마감 기능', async () => {
     const t = (await viewText()) + (await cur.evaluate(() => document.body.innerText));
-    rec('E1 업무 마감 기능', /마감하기|업무 마감|마감 요청/.test(t) ? 'PASS' : 'FAIL', '부서별 마감·마감 조건 확인·다음 업무일 생성 없음(교대 화면 미구현 목록에만 "마감 후 잠금")');
+    rec('E1 업무 마감 기능', /마감하기|업무 마감|마감 요청/.test(t) ? 'PASS' : 'FAIL', /마감하기|업무 마감|마감 요청/.test(t) ? '근무 마감(남은 것 있으면 이유 필수, 기록은 추가만)' : '부서별 마감 없음');
   });
   await step('E2 다음날: 전날 입실 가능 못 된 객실이 보이는가', async () => {
     // 418호: 퇴실 완료만 하고 청소 안 함 → 다음 날

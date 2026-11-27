@@ -152,7 +152,10 @@
       // [web] 담당(룸메이드) — 청소표 담당 칸
       const assign = {};
       ["main", "annex"].forEach(src => Object.entries((learned.assign || {})[src] || {}).forEach(([no, n]) => { assign[roomId(bm[src], no)] = n; }));
-      return { date, kinds: out, assign, master: learned.master };
+      // [web] 재실 요청 시간 — 청소표 메모/비고
+      const requests = {};
+      ["main", "annex"].forEach(src => Object.entries((learned.requests || {})[src] || {}).forEach(([no, q]) => { requests[roomId(bm[src], no)] = q; }));
+      return { date, kinds: out, assign, requests, master: learned.master };
     },
 
     // 업무의 객실 표기를 객실 기준 정보에 맞춘다. 번호가 두 동에 다 있으면 동을 알아야 한다.

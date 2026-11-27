@@ -19,7 +19,7 @@ seed.tasks = { t1: { kind: 'repair', title: '에어컨 안 됨', room: defectRoo
 const R = []; const rec = (id, ok, note) => { R.push({ id, ok }); console.log(`[${ok ? 'PASS' : 'FAIL'}] ${id} — ${note}`); };
 (async () => {
   const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 1366, height: 900 }, timezoneId: 'Asia/Seoul' });
-  await ctx.addInitScript(s => { if (!localStorage.getItem('opsFrame:v1:property')) for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); }, seed);
+  await ctx.addInitScript(s => { try { ['FO','HK','FM','MG'].forEach(r => localStorage.setItem('opsFrameUi:guided:' + r, '1')); } catch (e) {} if (!localStorage.getItem('opsFrame:v1:property')) for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); }, seed);
   const errs = []; let p;
   const open = async role => { if (p) await p.close(); p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); await p.clock.install({ time: new Date(`${D}T15:30:00+09:00`) });
     await p.goto('http://127.0.0.1:8765/local.html#' + role); await p.waitForTimeout(500); const nm = { fo: '프론트', hk: '키핑', fm: '시설', mg: '관리자' }[role]; const k = p.locator('#lock button:visible', { hasText: nm }).first(); if (await k.count()) await k.click(); await p.waitForTimeout(700); };

@@ -591,6 +591,17 @@ res.stats[b] = st;
 });
 return res;
 }
+// [web] 메모에서 재실 요청 시간 읽기. 날짜(11/24)·호수(1512호)·※확인 줄은 먼저 지운다. 6~22시만, 끝이 없으면 시작+2시간
+function reqTimeOf(memo) {
+const t = String(memo || "").replace(/※확인[^\n]*/g, " ").replace(/\(\s*전체[^)]*\)/g, " ").replace(/\d{1,2}\s*\/\s*\d{1,2}/g, " ").replace(/\d{3,4}\s*호/g, " ").replace(/오후\s*(\d{1,2})/g, (x, h) => String(+h < 12 ? +h + 12 : +h)).replace(/오전\s*(\d{1,2})/g, "$1");
+const hh = (h, m) => { h = +h; m = m === undefined ? 0 : +m; return h >= 6 && h <= 22 && m >= 0 && m < 60 ? String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") : ""; };
+const plus2 = v => { const h = Math.min(23, +v.slice(0, 2) + 2); return String(h).padStart(2, "0") + v.slice(2); };
+let m = t.match(/(?:^|[^\d:])(\d{1,2})(?::(\d{2}))?\s*시?\s*[~∼～\-]\s*(?:(\d{1,2})(?::(\d{2}))?\s*시?)?/);
+if (m) { const f = hh(m[1], m[2]); if (f) { let to = m[3] !== undefined ? hh(m[3], m[4]) : ""; if (!to || to <= f) to = plus2(f); return { from: f, to: to }; } }
+m = t.match(/(?:^|[^\d])(\d{1,2}):(\d{2})(?!\d)/) || t.match(/(?:^|[^\d])(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?/);
+if (m) { const f = hh(m[1], m[2]); if (f) return { from: f, to: plus2(f) }; }
+return null;
+}
 function learnFromCleanSheet(wb) {
 const out = {
 date: {},
@@ -627,6 +638,10 @@ main: null,
 annex: null
 },
 assign: {
+main: {},
+annex: {}
+},
+requests: {
 main: {},
 annex: {}
 }
@@ -719,6 +734,9 @@ if (mo > cm + 1) yy--;
 if (mo >= 1 && mo <= 12 && dy >= 1 && dy <= 31) out.done[b].tag[room] = `${yy}-${String(mo).padStart(2, "0")}-${String(dy).padStart(2, "0")}`;
 }
 if (/^(재실청소|전체재실)$/.test(k)) {
+// [web] 재실 요청 시간: 메모/비고에 적힌 시간(11~13 · 13:00 · 13시 · 12~) = 그 시간에 정비해 달라는 요청(야간 검수 청소 정산 기준과 같음)
+const rq = reqTimeOf(memo);
+if (rq) out.requests[b][room] = rq;
 const sm = memo.replace(/※확인[^\n]*/g, "").match(/조기\s*퇴실|퇴실\s*완|퇴실\s*함|퇴실\s*했|체크\s*아웃\s*(?:완|함|했)|미\s*체크인|노\s*쇼|입실\s*예정|방\s*이동|객실\s*이동|룸\s*무브|룸\s*체인지/);
 if (sm) out.done[b].sig[room] = sm[0].replace(/\s+/g, "");
 }

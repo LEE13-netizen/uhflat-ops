@@ -4,7 +4,7 @@ const S = process.env.S, URL = 'http://127.0.0.1:8765/local.html';
 const seed = JSON.parse(fs.readFileSync(S + '/data/seed.json', 'utf8'));
 async function open(browser, { role = 'fo', mobile = false, time = '2026-12-02T08:00:00+09:00', keep } = {}) {
   const ctx = keep || await browser.newContext(mobile ? { ...devices['iPhone 13'], locale: 'ko-KR', timezoneId: 'Asia/Seoul' } : { viewport: { width: 1366, height: 900 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
-  if (!keep) await ctx.addInitScript(s => { try { if (!localStorage.getItem('opsFrame:v1:property')) for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); } catch (e) {} }, seed);
+  if (!keep) await ctx.addInitScript(s => { try { ['FO','HK','FM','MG'].forEach(r => localStorage.setItem('opsFrameUi:guided:' + r, '1')); } catch (e) {} try { if (!localStorage.getItem('opsFrame:v1:property')) for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); } catch (e) {} }, seed);
   const page = await ctx.newPage();
   await page.clock.install({ time: new Date(time) });
   const log = [];

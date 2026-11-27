@@ -9,7 +9,7 @@ seed.roomSvc = {}; turn.slice(0, 20).forEach((id, i) => { seed.roomSvc[`${D}__${
   const b = await chromium.launch(); const out = [];
   for (const mobile of [false, true]) for (const role of ['fo', 'hk', 'fm', 'mg']) for (const tab of ['board', 'work', 'svc']) {
     const ctx = await b.newContext(mobile ? { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true } : { viewport: { width: 1366, height: 900 } });
-    await ctx.addInitScript(s => { localStorage.clear(); for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); }, seed);
+    await ctx.addInitScript(s => { localStorage.clear(); try { ['FO','HK','FM','MG'].forEach(r => localStorage.setItem('opsFrameUi:guided:' + r, '1')); } catch (e) {} for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); }, seed);
     const p = await ctx.newPage(); await p.clock.install({ time: new Date(`${D}T10:00:00+09:00`) });
     await p.goto('http://127.0.0.1:8765/local.html#' + role); await p.waitForTimeout(500);
     const nm = { fo: '프론트', hk: '키핑', fm: '시설', mg: '관리자' }[role]; const k = p.locator('#lock button:visible', { hasText: nm }).first(); if (await k.count()) await k.click(); await p.waitForTimeout(500);

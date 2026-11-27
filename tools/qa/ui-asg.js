@@ -9,7 +9,7 @@ const R = []; const rec = (id, ok, note) => { R.push({ id, ok, note }); console.
 (async () => {
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, timezoneId: 'Asia/Seoul', locale: 'ko-KR' });
-  await ctx.addInitScript(s => { if (!localStorage.getItem('opsFrame:v1:property')) for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); }, seed);
+  await ctx.addInitScript(s => { try { ['FO','HK','FM','MG'].forEach(r => localStorage.setItem('opsFrameUi:guided:' + r, '1')); } catch (e) {} if (!localStorage.getItem('opsFrame:v1:property')) for (const c in s) localStorage.setItem('opsFrame:v1:' + c, JSON.stringify(s[c])); }, seed);
   const errs = []; let p;
   const open = async (role) => { if (p) await p.close(); p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); p.on('dialog', d => d.accept('새담당')); await p.clock.install({ time: new Date('2026-12-02T09:00:00+09:00') });
     await p.goto('http://127.0.0.1:8765/local.html#' + role); await p.waitForTimeout(500); const nm = { hk: '키핑', fo: '프론트' }[role]; const k = p.locator('#lock button:visible', { hasText: nm }).first(); if (await k.count()) await k.click(); await p.waitForTimeout(400); };

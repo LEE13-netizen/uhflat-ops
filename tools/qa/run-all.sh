@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 전체 점검 한 번에: 문법 → 동시 사용 시뮬레이션(기록 손실 0) → 불러오기 시험 → 화면 시나리오(로컬 1인 모드)
 # 사용: bash tools/qa/run-all.sh   (실제 예약 패턴을 쓰려면 tools/qa/data/stayIndex.json 을 두면 됨 — 저장소에 올리지 않음)
-# 끝에 "결과: 통과"면 배포해도 된다. 알려진 미구현(교대·인수인계·업무 마감) 실패는 따로 표시하고 통과로 친다.
+# 끝에 "결과: 통과"면 배포해도 된다. (교대·인수인계·근무 마감 D2·D3·E1도 이제 통과해야 한다)
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; QA="$ROOT/tools/qa"
 W="$(mktemp -d)"; mkdir -p "$W/data" "$W/site" "$W/shots"; FAIL=0
@@ -31,12 +31,11 @@ open(sys.argv[2],'w',encoding='utf-8').write(out.replace('<body class="gated">',
 PY
   (cd "$W/site" && python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > "$W/srv.pid"); sleep 1
   cp "$QA"/ui-*.js "$W/"; mkdir -p "$W/scripts"; cp "$QA"/ui-*.js "$W/scripts/"
-  for t in ui-scen ui-asg ui-board ui-vip; do
+  for t in ui-scen ui-asg ui-board ui-vip ui-autoreq ui-home ui-mgr ui-shift; do
     echo "-- $t"; S="$W" timeout 600 node "$W/$t.js" > "$W/$t.log" 2>&1
     grep -E "^\[(PASS|FAIL|ERROR|NOTE)\]" "$W/$t.log" | sed 's/ — .*//' | sort | uniq -c | sed 's/^/   /' | head -40
-    BAD=$(grep -E "^\[(FAIL|ERROR)\]" "$W/$t.log" | grep -vE "D2 |D3 |E1 " | head -5)
+    BAD=$(grep -E "^\[(FAIL|ERROR)\]|^errors" "$W/$t.log" | head -5)
     [ -n "$BAD" ] && { echo "   예상 밖 실패:"; echo "$BAD" | sed 's/^/     /'; FAIL=1; }
-    grep -E "^\[FAIL\] (D2|D3|E1) " "$W/$t.log" | sed 's/ — .*//; s/^/   알려진 미구현: /'
   done
   kill "$(cat "$W/srv.pid")" 2>/dev/null
 else echo "건너뜀: playwright 없음"; fi

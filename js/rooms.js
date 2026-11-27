@@ -99,7 +99,7 @@
         const b = bm[src];
         (g[src] || []).forEach(r => {
           const flags = (r.flags || []).concat(r.risk || []).filter(f => !/객실구분 미확인|청소표 없음/.test(f)).slice(0, 3);
-          out[roomId(b, r.room)] = { stay: r.state || "연박", clean: r.kind || "", sameDayIn: r.today === "당일", flags };
+          out[roomId(b, r.room)] = { stay: r.state || "연박", clean: r.kind || "", sameDayIn: r.state === "퇴실·입실", flags };   // [web] today="당일"은 오늘 퇴실 표시라 당일 입실 판단에 쓰지 않는다
           if (typeof r.day === "number") out[roomId(b, r.room)].day = r.day;   // [web] 체크인 후 며칠째(7일 점검용)
         });
         const S = stays && stays[src];

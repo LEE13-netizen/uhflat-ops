@@ -698,9 +698,9 @@
     return { buildings: [{ id: "demo", name: "예시동" }], rooms, demo: true };
   })();
   const boardM = () => (st.master && st.master.rooms && Object.keys(st.master.rooms).length ? st.master : DEMO);
-  const STAY_SHORT = { "퇴실": "퇴실", "퇴실·입실": "퇴·입", "입실": "입실", "연박": "재실", "공실": "공실" };
+  const STAY_SHORT = { "퇴실": "퇴실", "퇴실·입실": "퇴실→입실", "입실": "입실", "연박": "재실", "공실": "공실" };
   // [web] 단어 통일(화면 표기만, 저장 값은 그대로): 연박 → 재실, 재실청소 → 일반 청소, 전체재실 → 전체 청소, 객실청소 → 퇴실 청소
-  const STAY_NAME = { "연박": "재실" };
+  const STAY_NAME = { "연박": "재실", "퇴실·입실": "퇴실→입실" };   // [web] 퇴·입은 "퇴실이냐 입실이냐"로 읽혀서, 순서가 보이게 화살표로
   const stayName = v => STAY_NAME[v] || v || "";
   const KIND_NAME = { "재실청소": "일반 청소", "전체재실": "전체 청소", "객실청소": "퇴실 청소" };
   const kindName = v => KIND_NAME[v] || v || "";
@@ -855,7 +855,7 @@
       ${demo ? `<p class="demo">예시 객실입니다. 관리자 역할의 설정 탭에서 객실을 등록하거나 예약표를 한 번 올리면 실제 객실로 바뀝니다.</p>` : ""}
       ${!demo ? dayNote() : ""}
       ${!demo ? liveLine() : ""}
-      <details class="lgd" ${st.lgOpen ? "open" : ""}><summary>표시 설명 · 객실을 누르면 퇴실·청소 단계를 바로 바꿀 수 있습니다</summary><div class="legend2"><span><span class="tf hot">긴급</span> 긴급 업무</span><span><span class="tf need">미확인</span> ${esc(OPS.deptName(st.role))} 화면에서 아직 안 본 것</span><span><span class="dct dc-FO">${icon("FO", 14)}1</span><span class="dct dc-HK">${icon("HK", 14)}1</span><span class="dct dc-FM">${icon("FM", 14)}1</span> 부서별 열린 업무(프론트·키핑·시설)</span><span><span class="dct dv">불출 1</span> 진행 중 불출</span></div><div class="legend2 lgcs"><b>칸 아래 띠 = 청소 단계</b>${Object.keys(CS).map(k => `<span class="lgc cs-${k}"><b>${CS[k][0]}</b>${esc(CS[k][1])}</span>`).join("")}<span>숙박 상태(퇴실·입실·연박·공실)는 호수 아래 글자</span>${canStage() ? `<span>${st.role === "HK" ? "키핑" : "관리자"}: 칸을 우클릭(휴대폰은 길게 누르기)하면 청소 단계를 바로 바꿀 수 있습니다</span>` : ""}</div></details>
+      <details class="lgd" ${st.lgOpen ? "open" : ""}><summary>표시 설명 · 객실을 누르면 퇴실·청소 단계를 바로 바꿀 수 있습니다</summary><div class="legend2"><span><span class="tf hot">긴급</span> 긴급 업무</span><span><span class="tf need">미확인</span> ${esc(OPS.deptName(st.role))} 화면에서 아직 안 본 것</span><span><span class="dct dc-FO">${icon("FO", 14)}1</span><span class="dct dc-HK">${icon("HK", 14)}1</span><span class="dct dc-FM">${icon("FM", 14)}1</span> 부서별 열린 업무(프론트·키핑·시설)</span><span><span class="dct dv">불출 1</span> 진행 중 불출</span></div><div class="legend2 lgcs"><b>칸 아래 띠 = 청소 단계</b>${Object.keys(CS).map(k => `<span class="lgc cs-${k}"><b>${CS[k][0]}</b>${esc(CS[k][1])}</span>`).join("")}${canStage() ? `<span>${st.role === "HK" ? "키핑" : "관리자"}: 칸을 우클릭(휴대폰은 길게 누르기)하면 청소 단계를 바로 바꿀 수 있습니다</span>` : ""}</div><div class="legend2 lgst"><b>호수 아래 글자 = 숙박 상태</b><span><b class="t-out">퇴실</b> 오늘 나가고 빈 방</span><span><b class="t-out">퇴실→입실</b> 오늘 나가고 15시에 새 손님(먼저 청소)</span><span><b class="t-in">입실</b> 빈 방에 새 손님</span><span><b class="t-stay">재실</b> 계속 묵는 손님</span><span><b>공실</b> 손님 없음</span></div></details>
     </section>
     ${mode === "plan" ? planView(M, by, needIds, hotIds, q) : mode === "stack" ? stackView(M, by, needIds, hotIds, q) : sections || `<div class="empty">해당하는 객실이 없습니다.</div>`}`;
   }

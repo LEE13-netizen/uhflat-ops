@@ -135,6 +135,8 @@ body .task.need{border:2px solid var(--hot);animation:opsNeed 1s ease-in-out inf
 .rt:not(.hasc)::after{background:var(--soft)!important}
 .lgc{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;font-size:13px;font-weight:700;background:var(--csb);color:var(--csf)}
 .lgcs{margin-top:8px}.lgcs>b{color:var(--ink);font-size:14px}
+/* [web] 숙박 상태 설명: 청소 단계와 줄을 나누고, 글자색을 칸 글자색과 맞춘다 */
+.lgst{margin-top:10px}.lgst>b{color:var(--ink);font-size:14px;flex-basis:100%}.lgst .t-out{color:var(--outc)}.lgst .t-in{color:var(--ok)}.lgst .t-stay{color:var(--accent)}
 .pr[class*="cs-"] rect.bar{fill:var(--csb)}
 .pr.cs-x rect.bar{fill:var(--cs-x-f);opacity:.5}
 .pr:not([class*="cs-"]) rect.bar{fill:var(--soft)}

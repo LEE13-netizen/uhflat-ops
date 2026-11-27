@@ -118,7 +118,7 @@
       if (!st) return;
       const r = M.rooms[id];
       const s = (svcMap && svcMap[id]) || {};
-      if (st.stay === "퇴실" || st.stay === "퇴실·입실") out.push({ id, r, type: "out", kind: "객실청소", sameDayIn: st.stay === "퇴실·입실" || !!st.sameDayIn, s });
+      if (st.stay === "퇴실" || st.stay === "퇴실·입실") out.push({ id, r, type: "out", kind: "객실청소", sameDayIn: st.stay === "퇴실·입실", s });   // [web] 저장된 sameDayIn은 예전 오류값일 수 있어 숙박 상태로만 판단
       else if (STAY_KINDS.has(st.clean) || st.stay === "연박") {
         // [web] 직접 바꾼 종류가 있으면 그것, 점검일이면 전체 청소
         const n = +(OPS.CTX && OPS.CTX.forceDays) || 7, force = typeof st.day === "number" && st.day >= n && st.day % n === 0;

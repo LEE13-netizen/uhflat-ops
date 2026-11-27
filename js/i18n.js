@@ -21,7 +21,7 @@
     ["해당하는 객실이 없습니다.", "No matching rooms."], ["상태:", "status:"], ["반영", "loaded"],
     ["숙박 상태가 아직 없습니다. 객실판은 그대로 쓰고, 예약표를 올리면 퇴실·입실·연박이 표시됩니다", "No stay status yet. Front uploads the reservation sheet to show check-out / check-in / stay-over"],
     // 숙박·청소 상태
-    ["퇴실·입실", "C/O + C/I"], ["퇴·입", "C/O+C/I"], ["퇴실 완료·청소 대기", "Checked out · to clean"], ["손님 아직 있음", "HK: guest still in"], ["연장·청소 없음", "Extended · no cleaning"],
+    ["퇴실·입실", "C/O + C/I"], ["퇴·입", "C/O+C/I"], ["퇴실→입실", "C/O → C/I"], ["호수 아래 글자 = 숙박 상태", "Text under room no. = stay status"], ["오늘 나가고 15시에 새 손님(먼저 청소)", "leaves today, new guest at 15:00 (clean first)"], ["오늘 나가고 빈 방", "leaves today, stays empty"], ["빈 방에 새 손님", "new guest into empty room"], ["계속 묵는 손님", "guest staying on"], ["손님 없음", "no guest"], ["퇴실 완료·청소 대기", "Checked out · to clean"], ["손님 아직 있음", "HK: guest still in"], ["연장·청소 없음", "Extended · no cleaning"],
     ["무응답·청소 없음", "No reply · no cleaning"], ["쓰레기·수건만", "Trash/towels only"], ["입실 가능", "Inspected · ready"], ["청소 끝(점검 대기)", "Cleaned (to inspect)"],
     ["입실 가능", "Ready"], ["점검 대기", "To inspect"], ["청소 대기", "To clean"], ["청소 중", "Cleaning"], ["청소 시작", "Start cleaning"], ["청소 완료", "Cleaned"], ["청소 없음", "No cleaning"],
     ["손님 아직 있음", "Guest still in"], ["회신 대기", "Waiting reply"], ["발송 전", "Not sent"], ["시간 확정", "Time set"], ["재실 청소", "Stay-over clean"], ["요청만", "Requests only"],

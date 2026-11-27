@@ -32,7 +32,9 @@ PY
   (cd "$W/site" && python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > "$W/srv.pid"); sleep 1
   cp "$QA"/ui-*.js "$W/"; mkdir -p "$W/scripts"; cp "$QA"/ui-*.js "$W/scripts/"
   for t in ui-scen ui-asg ui-board ui-vip ui-autoreq ui-home ui-mgr ui-shift; do
-    echo "-- $t"; S="$W" timeout 600 node "$W/$t.js" > "$W/$t.log" 2>&1
+    echo "-- $t"; S="$W" timeout 600 node "$W/$t.js" > "$W/$t.log" 2>&1; RC=$?
+    # 시험 스크립트가 중간에 죽으면(예외·시간 초과) FAIL 줄이 없어도 실패로 친다
+    [ $RC -ne 0 ] && { echo "   시험 중단(종료 코드 $RC):"; grep -E "Error|Timeout|at " "$W/$t.log" | head -3 | sed 's/^/     /'; FAIL=1; }
     grep -E "^\[(PASS|FAIL|ERROR|NOTE)\]" "$W/$t.log" | sed 's/ — .*//' | sort | uniq -c | sed 's/^/   /' | head -40
     BAD=$(grep -E "^\[(FAIL|ERROR)\]|^errors" "$W/$t.log" | head -5)
     [ -n "$BAD" ] && { echo "   예상 밖 실패:"; echo "$BAD" | sed 's/^/     /'; FAIL=1; }

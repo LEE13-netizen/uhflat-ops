@@ -12,7 +12,9 @@ const R = []; const rec = (id, ok, note) => { R.push({ id, ok }); console.log(`[
   const open = async (role, time) => { if (p) await p.close(); p = await ctx.newPage(); p.on('pageerror', e => errs.push(e.message)); p.on('dialog', d => { dlg.push(d.message()); d.accept(); });
     await p.clock.install({ time: new Date(`${D}T${time || '09:00'}:00+09:00`) }); await p.goto('http://127.0.0.1:8765/local.html#' + role); await p.waitForTimeout(500);
     const nm = { fo: '프론트', hk: '키핑', fm: '시설' }[role]; const k = p.locator('#lock button:visible', { hasText: nm }).first(); if (await k.count()) await k.click(); await p.waitForTimeout(600); };
-  const room = async id => { await p.locator(`.rt[data-room="${id}"]`).first().click(); await p.waitForTimeout(400); };
+  const room = async id => {   // 객실 칸은 현황판에 있다(키핑·시설은 첫 화면이 다르므로 현황판으로 먼저)
+    if (!(await p.locator(`.rt[data-room="${id}"]`).filter({ visible: true }).count())) { await p.click('#menuBtn'); await p.waitForTimeout(350); await p.locator('[data-tab="board"]').filter({ visible: true }).first().click(); await p.waitForTimeout(500); }
+    await p.locator(`.rt[data-room="${id}"]`).first().click(); await p.waitForTimeout(400); };
   const closeD = async () => { const x = p.locator('#dlgX'); if (await x.isVisible()) await x.click(); await p.waitForTimeout(200); };
   const doc = (id, d) => p.evaluate(([k]) => JSON.parse(localStorage.getItem('opsFrame:v1:roomSvc') || '{}')[k] || null, [`${d || D}__${id}`]);
   const tap = async sel => { const l = p.locator(sel).first(); await l.evaluate(e => e.scrollIntoView({ block: 'center' })); await l.click(); await p.waitForTimeout(350); };

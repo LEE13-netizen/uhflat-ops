@@ -37,7 +37,7 @@ const R = []; const rec = (id, ok, note) => { R.push(ok); console.log(`[${ok ? '
   await open('fo', '12:30'); const bar2 = (await p.locator('#openbar').innerText().catch(() => '')).replace(/\s+/g, ' ');
   const hot2 = await p.locator('#openbar .ob.hot', { hasText: '입실' }).count();
   rec('11:30에는 입실 준비 알림 없음', !/입실 준비 안 됨/.test(bar1), bar1.slice(0, 120));
-  rec('12:30부터 당일 입실 준비 알림 + 15시 부족 예상(빨강)', /당일 입실 준비 안 됨/.test(bar2) && /15시 \d+실 부족 예상/.test(bar2) && hot2 === 1, bar2.slice(0, 160));
+  rec('12:30부터 당일 입실 준비 알림 + 15시 부족 예상(빨강)', /입실 준비 안 됨/.test(bar2) && /15시 \d+실 부족 예상/.test(bar2) && hot2 === 1, bar2.slice(0, 160));
   if (errs.length) { console.log('errors', errs); R.push(false); }
   await b.close(); console.log(`pass ${R.filter(Boolean).length}/${R.length}`);
 })();

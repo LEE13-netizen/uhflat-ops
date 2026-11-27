@@ -1675,7 +1675,7 @@
     const n = k => (K.sets[k] ? K.sets[k].size : 0), nowMin = new Date().getHours() * 60 + new Date().getMinutes(), r = st.role;
     const it = (k, label, tone, tab, title) => ({ k, label, tone, n: n(k), tab: tab || "board", title: title || "" });
     // [web] 입실 준비: 12시부터 알림, 14시부터 또는 15시까지 못 맞출 것으로 보이면 빨강
-    const rk = K.risk || {}, arrIt = () => it("o-arrnot", nowMin >= 15 * 60 ? "입실 시간 지남·준비 안 됨" : rk.short ? `입실 준비 안 됨 · 15시 ${rk.short}실 부족 예상` : "당일 입실 준비 안 됨", nowMin >= 14 * 60 || rk.short ? "hot" : "warn", "board", rk.short ? `최근 1시간 ${rk.doneHr}실 완료 속도로 15시까지 남은 ${rk.left}실 중 ${rk.short}실을 못 맞출 것으로 보입니다` : "");
+    const rk = K.risk || {}, arrIt = () => it("o-arrnot", nowMin >= 15 * 60 ? "입실 준비 안 됨 · 15시 지남" : rk.short ? `입실 준비 안 됨 · 15시 ${rk.short}실 부족 예상` : "당일 입실 준비 안 됨", nowMin >= 14 * 60 || rk.short ? "hot" : "warn", "board", rk.short ? `최근 1시간 ${rk.doneHr}실 완료 속도로 15시까지 남은 ${rk.left}실 중 ${rk.short}실을 못 맞출 것으로 보입니다` : "");
     const fmOpen = st.tasks.filter(t => Core.isOpen(t) && t.toDept === "FM").length;
     let L = [];
     if (r === "FO") L = [it("o-vipwait", "VIP 준비 안 됨", "hot"), it("reply", "답할 것", "hot"), it("o-indefect", "입실 예정 객실 하자", "hot"), it("c-prev", "어제 미완료", "hot"), arrIt(),

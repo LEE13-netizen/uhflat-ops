@@ -430,3 +430,14 @@ details.hfold[open]>summary{margin-bottom:8px}
 .ob.acc{border-color:var(--accent);color:var(--accent)}
 @media(prefers-reduced-motion:no-preference){.openbar.hot .obh{animation:opsObPulse 2.4s ease-in-out infinite}}
 @keyframes opsObPulse{50%{opacity:.55}}
+/* [web] VIP 객실(인스펙 필요) — 밝은/어두운 화면 모두 대비 */
+:root{--vip:light-dark(#6b4e16,#d9ad55);--on-vip:light-dark(#fff,#1d1606)}
+.chip.vip,.tf.vip{background:var(--vip);color:var(--on-vip);font-weight:800;letter-spacing:.02em}
+.vipbox{margin:10px 0;padding:10px 12px;border:1.5px dashed var(--line);border-radius:12px;display:grid;gap:6px}
+.vipbox.on{border:2px solid var(--vip);background:color-mix(in srgb,var(--vip) 8%,var(--card))}
+.vipbox .vipn{font-weight:700}
+.vipf{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.vipf input{flex:1 1 200px;min-height:40px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);padding:0 10px;font-size:15px}
+.vipf select{min-height:40px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.card.vipsec{border:2px solid var(--vip)}
+.cat.t-acc:not([aria-pressed=true]){border-color:var(--vip);color:var(--vip)}

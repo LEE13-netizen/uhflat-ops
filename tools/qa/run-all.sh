@@ -31,7 +31,7 @@ open(sys.argv[2],'w',encoding='utf-8').write(out.replace('<body class="gated">',
 PY
   (cd "$W/site" && python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > "$W/srv.pid"); sleep 1
   cp "$QA"/ui-*.js "$W/"; mkdir -p "$W/scripts"; cp "$QA"/ui-*.js "$W/scripts/"
-  for t in ui-scen ui-asg ui-board; do
+  for t in ui-scen ui-asg ui-board ui-vip; do
     echo "-- $t"; S="$W" timeout 600 node "$W/$t.js" > "$W/$t.log" 2>&1
     grep -E "^\[(PASS|FAIL|ERROR|NOTE)\]" "$W/$t.log" | sed 's/ — .*//' | sort | uniq -c | sed 's/^/   /' | head -40
     BAD=$(grep -E "^\[(FAIL|ERROR)\]" "$W/$t.log" | grep -vE "D2 |D3 |E1 " | head -5)

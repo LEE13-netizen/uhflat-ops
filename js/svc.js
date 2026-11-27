@@ -24,8 +24,12 @@
   // 재실 회신이 키핑 일감인지
   const stayWork = s => !!(s.reply && (s.reply.type === "time" || (s.reply.type === "refuse" && s.reply.items)));
 
+  // [web] VIP 객실(인스펙 필요): 청소·점검(done)이 끝나도 부서장·관리자의 VIP 인스펙(vipOk)까지 해야 입실 가능
+  const vipWait = s => !!(s && s.vip && !s.vipOk);
+  const isReady = s => !!(s && s.done && !vipWait(s));
   function status(row) {
     const s = row.s || {};
+    if (s.done && vipWait(s)) return "VIP 인스펙 대기";
     if (row.type === "stay") {
       if (s.done) return "완료";
       if (!s.reply) return "요청 없음";
@@ -68,7 +72,9 @@
   function foNeedsAck(row) {
     const s = row.s || {};
     if (row.type !== "out" || !s.done || s.ext || !s.done.at || s.done.at < FOACK_FROM) return false;
-    return !(s.foAck && s.foAck.at >= s.done.at);
+    if (vipWait(s)) return false;   // [web] VIP는 인스펙 끝난 뒤 알림
+    const at = s.vip && s.vipOk ? Math.max(s.done.at, s.vipOk.at) : s.done.at;
+    return !(s.foAck && s.foAck.at >= at);
   }
 
   // [web] 키핑이 직접 퇴실을 확인한 객실(프론트 퇴실 완료 전에 손님이 나감) → 프론트가 읽었는가
@@ -103,7 +109,7 @@
 
   // 키핑 작업 순서: 프론트가 입실 시각을 건 객실(시각 순) → 당일 입실 퇴실 객실 → 나머지 퇴실 완료(먼저 된 순) → 재실 시간 순 → 쓰레기·수건만
   function hkSort(rows) {
-    const rank = r => r.type === "out" ? (r.s.prio ? -1 : r.sameDayIn ? 0 : 1) : (r.s.reply && r.s.reply.type === "time" ? 2 : 3);
+    const rank = r => r.type === "out" ? (r.s.prio ? -1 : r.s.vip ? -0.5 : r.sameDayIn ? 0 : 1) : (r.s.vip ? 1.5 : r.s.reply && r.s.reply.type === "time" ? 2 : 3);   // [web] VIP는 우선 준비 다음
     const key = r => r.type === "out" ? (r.s.prio ? windowStart(r.s.prio.time) : r.s.co ? r.s.co.at : 0) : windowStart(r.s.reply && r.s.reply.window);
     return rows.slice().sort((a, b) => rank(a) - rank(b) || key(a) - key(b) || (+a.r.no - +b.r.no));
   }
@@ -165,7 +171,7 @@
   const by = (actor, extra) => Object.assign({ at: Date.now(), by: actor.name || "", uid: actor.uid || "", role: actor.role }, extra || {});
 
   OPS.Svc = {
-    sid, rows, status, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, foNeedsAck, foCoNeedsAck, hkTodo, forceDue, hkSort, summary, windowStart, stayWork,
+    sid, rows, status, vipWait, isReady, REQ_KINDS, reqText, hhmm, foNeeds, hkNeedsAck, foNeedsAck, foCoNeedsAck, hkTodo, forceDue, hkSort, summary, windowStart, stayWork,
     send: (date, id, cur, actor, via) => write(date, id, cur, { sent: by(actor, { via: clean(via, 12) }) }, actor, "재실 안내 발송"),
     unsend: (date, id, cur, actor) => write(date, id, cur, { sent: null }, actor, "발송 취소"),
     replyTime: (date, id, cur, actor, window, items) => {
@@ -229,6 +235,9 @@
       const n = v => Math.max(0, Math.min(20, parseInt(v, 10) || 0));
       return write(date, id, cur, { done: by(actor, { small: n(small), large: n(large) }), hkAck: (cur && cur.hkAck) || by(actor) }, actor, "청소 완료" + (n(small) || n(large) ? ` (작${n(small)} 큰${n(large)})` : ""));
     },
-    undoDone: (date, id, cur, actor) => write(date, id, cur, { done: null }, actor, "완료 취소")
+    undoDone: (date, id, cur, actor) => write(date, id, cur, { done: null, vipOk: null }, actor, "완료 취소"),
+    // [web] VIP 객실 지정(인스펙 필요) / 해제, VIP 인스펙 완료 / 취소. 메모에 투숙객 이름·연락처는 적지 않는다
+    setVip: (date, id, cur, actor, note) => write(date, id, cur, note === null ? { vip: null, vipOk: null } : { vip: by(actor, { note: clean(note, 60) }) }, actor, note === null ? "VIP 해제" : "VIP 지정(인스펙 필요)" + (note ? " / " + clean(note, 60) : "")),
+    vipOk: (date, id, cur, actor, on) => write(date, id, cur, { vipOk: on ? by(actor) : null }, actor, on ? "VIP 인스펙 완료" : "VIP 인스펙 취소")
   };
 })(typeof window !== "undefined" ? window : globalThis);

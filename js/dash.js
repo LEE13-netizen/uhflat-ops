@@ -17,7 +17,7 @@
       const s = x.s || {};
       if (s.ext) { c.ext++; return; }
       c.total++;
-      const k = s.done ? "ready" : (s.start || s.cleaned) ? "clean" : s.co ? "wait" : "pre";
+      const k = s.done && !(s.vip && !s.vipOk) ? "ready" : (s.done || s.start || s.cleaned) ? "clean" : s.co ? "wait" : "pre";   // [web] VIP 인스펙 대기는 아직 준비 중
       c[k]++; c.ids[k].push(x.id);
     });
     return c;

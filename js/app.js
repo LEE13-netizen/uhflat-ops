@@ -812,7 +812,8 @@
       // [web] 청소 단계는 아래 띠(색+기호+글자)로, 글자 줄은 숙박 상태와 재실 요청 시간만
       const cs = x ? cleanStage(x) : null, win = x && x.type === "stay" && x.s && x.s.reply && x.s.reply.window && !x.s.done ? x.s.reply.window : "";
       const ckind = x && x.type === "stay" && !(x.s && x.s.done) ? kindName(x.kind) : "";   // [web] 재실 → 일반 청소 / 전체 청소
-      const stTxt = [s && s.stay ? (STAY_SHORT[s.stay] || s.stay) : "", ckind, win].filter(Boolean).join(" · ");
+      const h24 = x && x.type === "out" && x.h24 && !(x.s && x.s.done) ? "24H" + (x.h24.co ? " " + x.h24.co : "") : s && s.stay === "입실" && s.h24 ? "24H 입실" : "";   // [web] 24시 스테이
+      const stTxt = [s && s.stay ? (STAY_SHORT[s.stay] || s.stay) : "", h24, ckind, win].filter(Boolean).join(" · ");
       const nsr = nsOf(id);
       const cls = ["rt", s && s.stay ? "st-" + (STAY_CLS[s.stay] || "") : "", hot ? "hot" : "", meHK && isMine(id, meHK) ? "mine" : "", need ? "need" : "", x && x.s && x.s.done && x.type === "out" ? "ready" : "", cs ? "hasc" : "", nsr ? "ns" : ""].join(" ");
       const badges = ["FO", "HK", "FM"].filter(k => dc[k]).map(k => `<span class="dct dc-${k}" title="${esc((OPS.DEPTS.find(d => d.id === k) || {}).name || k)} 업무 ${dc[k]}건">${icon(k, 14)}${dc[k]}</span>`).join("")
@@ -906,12 +907,14 @@
     });
     prevOpen().filter(x => x.d.co).forEach(x => add("c-prev", x.id));
     // [web] 미마감 알림용: 요청 시간이 지난 재실 · 오늘 입실 객실의 시설 하자 · 14시 넘어 아직 준비 안 된 당일 입실
-    ["o-staylate", "o-indefect", "o-arrnot"].forEach(k => { sets[k] = new Set(); });
+    ["o-staylate", "o-indefect", "o-arrnot", "o-coover"].forEach(k => { sets[k] = new Set(); });
     const nowMin = new Date(now).getHours() * 60 + new Date(now).getMinutes(), isToday = st.rdate === OPS.ymd(now);
     rows.forEach(x => {
       const s = x.s || {};
       if (isToday && x.type === "stay" && !s.done && OPS.Svc.stayWork(s) && s.reply && s.reply.window) { const end = OPS.Svc.windowStart((s.reply.window.split("~")[1] || "")); if (end < 24 * 60 && nowMin > end) add("o-staylate", x.id); }
       if (isToday && x.type === "out" && x.sameDayIn && !s.done && !s.ext && nowMin >= 12 * 60) add("o-arrnot", x.id);
+      // [web] 퇴실 시간 지남: 11시 이후 퇴실 전 — 레이트·24시 스테이는 그 시각이 지나야
+      if (isToday && x.type === "out" && !s.co && !s.done && !s.ext) { const lt = s.late && s.late.time ? OPS.Svc.windowStart(s.late.time) : 11 * 60; if (nowMin >= (s.late && !s.late.time ? 24 * 60 : lt)) add("o-coover", x.id); }
     });
     // [web] 15시 입실 위험 예측: 남은 당일 입실 객실 vs 최근 1시간 완료 속도 × 남은 시간
     const risk = (() => {
@@ -925,7 +928,7 @@
     const rc = OPS.Dash.ready(rows.filter(x => inRb(x.id)));
     ["ready", "clean", "wait", "pre"].forEach(k => { sets["rd-" + k] = new Set(rc.ids[k]); });
     const dn = OPS.deptName(st.role);
-    const label = { "c-vip": "VIP 객실", "o-vipwait": "VIP 인스펙 안 끝남", "o-staylate": "요청 시간이 지난 재실 청소", "o-indefect": "오늘 입실 객실인데 시설 하자", "o-arrnot": "당일 입실인데 아직 입실 가능 아님(12시 이후)", "c-out": "오늘 퇴실", "c-in": "입실 예정", "c-stay": "재실", "c-free": "공실", "c-cleaning": "청소 중", "c-insp": "점검 대기", "c-ready": "입실 가능", "c-defect": "시설 하자(열린 시설 업무)", "c-prev": "어제 미완료", need: dn + " 확인 필요", hot: "긴급", late: "기한 초과", mine: "우리 부서 업무", pre: "퇴실 전", ing: "청소 대기·중", ready: "입실 가능", reply: "프론트가 답할 것", todo: "할 청소", deliv: "불출 출발 전",
+    const label = { "c-vip": "VIP 객실", "o-vipwait": "VIP 인스펙 안 끝남", "o-staylate": "요청 시간이 지난 재실 청소", "o-indefect": "오늘 입실 객실인데 시설 하자", "o-arrnot": "당일 입실인데 아직 입실 가능 아님(12시 이후)", "o-coover": "퇴실 시간 지남(레이트·24시 스테이는 그 시각 이후)", "c-out": "오늘 퇴실", "c-in": "입실 예정", "c-stay": "재실", "c-free": "공실", "c-cleaning": "청소 중", "c-insp": "점검 대기", "c-ready": "입실 가능", "c-defect": "시설 하자(열린 시설 업무)", "c-prev": "어제 미완료", need: dn + " 확인 필요", hot: "긴급", late: "기한 초과", mine: "우리 부서 업무", pre: "퇴실 전", ing: "청소 대기·중", ready: "입실 가능", reply: "프론트가 답할 것", todo: "할 청소", deliv: "불출 출발 전",
       "rd-ready": "당일 입실 · 입실 가능", "rd-clean": "당일 입실 · 청소 중·점검 대기", "rd-wait": "당일 입실 · 퇴실 완료, 청소 대기", "rd-pre": "당일 입실 · 아직 퇴실 전" };
     return { sets, label, hasDay, rows, rc, risk, arr: OPS.Dash.arrivals(Object.keys(M.rooms).filter(inRb), id => roomState(id, st.rdate)), fresh: OPS.Dash.freshness(day, st.rdate, now) };
   }
@@ -1115,6 +1118,8 @@
     const dd = dayDoc(st.rdate) || {}, req = dd.requests || {}, def = OPS.CTX.stayPolicy === "default";
     const [wf, wt] = (OPS.CTX.stayWin || "10:00~16:00").split("~");
     return rows.map(x => {
+      // [web] 24시 스테이 퇴실: 레이트 체크아웃처럼(퇴실 시각 = 입실 시각). 프론트가 레이트를 직접 넣으면 그 값이 우선
+      if (x.type === "out" && x.h24 && !(x.s && (x.s.late || x.s.co || x.s.done))) return Object.assign({}, x, { s: Object.assign({}, x.s, { late: { time: x.h24.co || "", at: 0, by: "24시 스테이", auto: "24h" } }) });
       if (x.type !== "stay" || (x.s && (x.s.reply || x.s.done))) return x;
       const q = req[x.id], from = q ? q.from : wf, to = q ? q.to : wt;
       if (!q && !def) return x;
@@ -1680,13 +1685,13 @@
     const fmOpen = st.tasks.filter(t => Core.isOpen(t) && t.toDept === "FM").length;
     let L = [];
     if (r === "FO") L = [it("o-vipwait", "VIP 준비 안 됨", "hot"), it("reply", "답할 것", "hot"), it("o-indefect", "입실 예정 객실 하자", "hot"), it("c-prev", "어제 미완료", "hot"), arrIt(),
-      nowMin >= 11 * 60 ? it("pre", "퇴실 시간 지남", "hot") : null, it("need", "확인 필요", "acc"), it("c-defect", "시설 하자 객실", "warn")];
+      it("o-coover", "퇴실 시간 지남", "hot"), it("need", "확인 필요", "acc"), it("c-defect", "시설 하자 객실", "warn")];
     else if (r === "HK") {
       const me = myName(), mineLeft = me ? svcRows().filter(x => isMine(x.id, me) && !(x.s && (x.s.done || x.s.ext)) && (x.type === "out" || OPS.Svc.hkTodo(x))).length : 0;
       L = [me ? { k: "", label: "내 방 남음", tone: "acc", n: mineLeft, tab: "svc" } : null, it("o-vipwait", "VIP 인스펙 대기", "hot"), it("c-prev", "어제 미완료", "hot"), it("o-staylate", "요청 시간 지난 재실", "hot"), arrIt(),
         it("need", "새로 온 것", "acc"), it("todo", "할 청소", "acc", "svc"), it("c-insp", "점검 대기", "warn"), it("deliv", "불출 대기", "warn")];
     } else if (r === "FM") L = [it("o-indefect", "오늘 입실 객실 하자", "hot"), it("hot", "긴급", "hot"), it("late", "기한 초과", "hot"), { k: "", label: "열린 시설 업무", tone: "acc", n: fmOpen, tab: "work" }, it("need", "확인 필요", "acc")];
-    else L = [it("o-vipwait", "VIP 인스펙 대기", "hot"), it("c-prev", "어제 미완료", "hot"), it("o-indefect", "입실 예정 객실 하자", "hot"), arrIt(), it("o-staylate", "요청 시간 지난 재실", "warn"), nowMin >= 11 * 60 ? it("pre", "퇴실 시간 지남", "warn") : null, { k: "", label: "열린 시설 업무", tone: "acc", n: fmOpen, tab: "work" }];
+    else L = [it("o-vipwait", "VIP 인스펙 대기", "hot"), it("c-prev", "어제 미완료", "hot"), it("o-indefect", "입실 예정 객실 하자", "hot"), arrIt(), it("o-staylate", "요청 시간 지난 재실", "warn"), it("o-coover", "퇴실 시간 지남", "warn"), { k: "", label: "열린 시설 업무", tone: "acc", n: fmOpen, tab: "work" }];
     return L.filter(x => x && x.n > 0);
   }
   let baseTitle = "";
@@ -1788,7 +1793,7 @@
       if (s.start) return { k: "ing", t: "청소 중" };
       if (s.co) return { k: "wait", t: "청소 대기" };
       if (OPS.Svc.foNeeds(x)) return { k: "pre", t: "손님 아직 있음" };
-      return { k: "pre", t: s.late ? "레이트 " + s.late.time : "퇴실 전" };
+      return { k: "pre", t: s.late && s.late.auto !== "24h" ? "레이트 " + s.late.time : "퇴실 전" };   // [web] 24시 스테이 시각은 칸 글자(24H)에
     }
     if (s.done) return { k: "ok", t: "청소 완료" };
     if (OPS.Svc.stayWork(s)) return { k: "wait", t: s.reply.type === "time" ? "청소 대기" : "요청만" };

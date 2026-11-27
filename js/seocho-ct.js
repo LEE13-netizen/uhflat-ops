@@ -179,6 +179,78 @@ const na = a.ids.filter(x => x[0] === "n" || x[0] === "q").map(pkey), nb = b.ids
 return na.length > 0 && nb.length > 0 && !na.some(x => nb.indexOf(x) >= 0);
 }
 const md = iso => `${+iso.slice(5, 7)}/${+iso.slice(8, 10)}`;
+// [web] 24시 스테이: 메모(한글·영어)에 "24시 스테이·24시간·24H·24 hours stay" 등 + 하늘색 숫자. 1박 상품이라
+// 예약표에서 두 날짜 칸에 걸쳐 적혀도 1박(다음 날 퇴실)으로 본다(예약 상세의 입·퇴실일이 있으면 그 박수). 퇴실 시각은 입실 시각과 같다.
+const H24_RE = /(?:^|[^\d])24\s*-?\s*(?:시간|hours?|hrs?|h)(?![a-z])|24\s*시\s*(?:스테이|숙박|이용|상품)|(?:스테이|stay)\s*24/i;
+function h24Times(cm) {
+const t = String(cm || "");
+const hm = (ap1, h, m, ap2) => {
+h = +h; m = m === undefined || m === "" ? 0 : +m;
+const ap = (ap1 || "") + (ap2 || "");
+if (/pm|오후/i.test(ap) && h < 12) h += 12;
+if (/am|오전/i.test(ap) && h === 12) h = 0;
+return h >= 0 && h <= 23 && m >= 0 && m < 60 ? String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") : "";
+};
+const TM = "(오전|오후|am|pm)?\\s*(\\d{1,2})(?:\\s*:\\s*(\\d{2})|\\s*시(?:\\s*(\\d{1,2})\\s*분)?)\\s*(am|pm)?";
+const at = lb => { const m = t.match(new RegExp("(?:" + lb + ")[\\s\\S]{0,40}?" + TM, "i")); return m ? hm(m[1], m[2], m[3] !== undefined ? m[3] : m[4], m[5]) : ""; };
+const ci = at("체크인|입실|check[\\s-]*in|arrival"), co = at("체크아웃|퇴실|check[\\s-]*out|departure");
+return { ci: ci, co: co || ci };
+}
+function apply24(stays) {
+[ "main", "annex" ].forEach(b => stays && stays[b] && Object.values(stays[b].rooms).forEach(R => Object.values(R.cells).forEach(x => {
+if (x.h24 || !(x.h24c || x.blue)) return;
+const t = x.h24t || {};
+x.h24 = { ci: t.ci || "", co: t.co || "", by: x.h24c ? "memo" : "color" };
+if (!x.h24c) return;   // 색만으로는 박수를 바꾸지 않는다(다른 뜻일 수 있음)
+const n = x.cci === x.s && x.cco > x.cci ? diff(x.cci, x.cco) : 1, e = addDays(x.s, Math.max(1, n) - 1);
+if (x.e > e) { x.span = diff(x.s, x.e) + 1; x.e = e; }
+})));
+return stays;
+}
+const skyBlue = hex => {
+const h = String(hex || "").slice(-6); if (!/^[0-9a-f]{6}$/i.test(h)) return false;
+const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+if (!d) return false;
+const sat = d / (1 - Math.abs(2 * l - 1)), hue = (mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+const H = hue < 0 ? hue + 360 : hue;
+return H >= 180 && H <= 220 && sat >= 0.35 && l >= 0.4 && l <= 0.9;
+};
+// 숫자 칸의 글자색이 하늘색인지(엑셀 파일의 styles.xml) — 메모가 없을 때의 보조 신호
+async function readFontBlue(bytes, wb, stays) {
+if (typeof JSZip === "undefined" || !bytes || !stays) return false;
+const zip = await JSZip.loadAsync(bytes);
+const txt = async p => { const f = zip.file(p); return f ? await f.async("string") : ""; };
+const wbx = await txt("xl/workbook.xml"), rels = await txt("xl/_rels/workbook.xml.rels"), sty = await txt("xl/styles.xml");
+if (!wbx || !sty) return false;
+const relT = {};
+rels.replace(/<Relationship\b[^>]*>/g, t => { const id = (t.match(/Id="([^"]+)"/) || [])[1], tg = (t.match(/Target="([^"]+)"/) || [])[1]; if (id && tg) relT[id] = tg.replace(/^\/?xl\//, "").replace(/^\//, ""); return t; });
+const fsec = (sty.match(/<fonts[^>]*>([\s\S]*?)<\/fonts>/) || [])[1] || "";
+const fonts = (fsec.match(/<font\b[^>]*?(?:\/>|>[\s\S]*?<\/font>)/g) || []).map(f => skyBlue((f.match(/<color\b[^>]*rgb="([0-9A-Fa-f]{6,8})"/) || [])[1]));
+const xsec = (sty.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/) || [])[1] || "";
+const xBlue = (xsec.match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g) || []).map(x => !!fonts[+((x.match(/fontId="(\d+)"/) || [])[1] || 0)]);
+if (!xBlue.some(Boolean)) return false;
+let any = false;
+for (const [n, b] of [ [ "본관", "main" ], [ "신관", "annex" ] ]) {
+const S = stays[b]; if (!S) continue;
+const sheets = wbx.match(new RegExp('<sheet\\b[^>]*name="[^"]*\\(' + n + '\\)"[^>]*>', "g")) || [];
+const want = {};
+Object.values(S.rooms).forEach(R => Object.values(R.cells).forEach(x => { if (x.rc && x.a !== null) want[x.rc[0] + "|" + x.rc[1]] = x; }));
+for (const sm of sheets) {
+const rid = (sm.match(/r:id="([^"]+)"/) || [])[1], path = rid && relT[rid] ? "xl/" + relT[rid] : "";
+if (!path) continue;
+const xml = await txt(path), re = /<c r="([A-Z]+)(\d+)"([^>]*)>/g;
+let m;
+while (m = re.exec(xml)) {
+const si = (m[3].match(/\ss="(\d+)"/) || [])[1];
+if (!si || !xBlue[+si]) continue;
+const x = want[(+m[2] - 1) + "|" + XLSX.utils.decode_col(m[1])];
+if (x) { x.blue = true; any = true; }
+}
+}
+}
+if (any) apply24(stays);
+return any;
+}
 function readStays(wb) {
 const out = {
 main: null,
@@ -216,6 +288,7 @@ if (Object.keys(seen[k]).length >= (k[0] === "b" ? 4 : 15)) common[k.split("|")[
 [ "main", "annex" ].forEach(b => out[b] && Object.values(out[b].rooms).forEach(R => Object.values(R.cells).forEach(x => {
 if (x.ids) x.ids = x.ids.filter(k => !common[pkey(k)]);
 })));
+apply24(out);
 return out;
 }
 function readSheet(ws) {
@@ -294,7 +367,9 @@ a: x.t === "n" ? x.v : null,
 cci: ik.ci,
 cco: ik.co,
 ids: ik.ids,
-rc: [ r, c, end ]
+rc: [ r, c, end ],
+h24c: H24_RE.test(cm),
+h24t: H24_RE.test(cm) ? h24Times(cm) : null
 };
 });
 out[String(+rv)] = {
@@ -423,6 +498,13 @@ if (last.txt || startCell && startCell.txt) row.flags.push(`예약표 표기 "${
 row.risk = [];
 if (last.txt && txtKey(last.txt) !== "UHC") row.risk.push(`예약표 ${last.txt} 표기 — 정말 퇴실인지`);
 row.state = startCell && startCell.s === T ? "퇴실·입실" : "퇴실";
+if (last.h24) {   // [web] 24시 스테이 퇴실: 퇴실 시각이 평소(11시)보다 늦다
+row.h24 = { co: last.h24.co, ci: "" };
+row.flags.unshift(`24시 스테이 — 퇴실 ${last.h24.co || "시각 확인"}${last.h24.by === "color" ? "(하늘색 숫자로 추정, 메모 확인)" : ""}`);
+if (last.span) row.flags.push(`예약표 24시 스테이 칸이 ${last.span}일에 걸쳐 있음 — 1박(오늘 퇴실)으로 봄`);
+if (startCell && startCell.s === T) row.risk.unshift(`24시 스테이 퇴실 ${last.h24.co || "시각 확인"} 뒤 정비 — 오늘 입실 시각과 겹치는지`);
+}
+if (startCell && startCell.s === T && startCell.h24) row.flags.push(`오늘 입실 24시 스테이${startCell.h24.ci ? " " + startCell.h24.ci : ""}`);
 if (startCell && startCell.s === T && !last.txt && !startCell.txt) {
 const ps = stayStart(R, last), p0 = last.cci && last.cci < ps ? last.cci : ps;
 const pn = diff(p0, T), ne = startCell.cco && startCell.cci === startCell.s ? startCell.cco : addDays(stayEnd(R, startCell), 1), nn = diff(T, ne);
@@ -866,6 +948,9 @@ return {
 stayStart: stayStart,
 stayEnd: stayEnd,
 readMonthBorders: readMonthBorders,
+readFontBlue: readFontBlue,
+apply24: apply24,
+h24Times: h24Times,
 readStays: readStays,
 generate: generate,
 learnFromCleanSheet: learnFromCleanSheet,

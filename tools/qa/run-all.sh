@@ -15,8 +15,8 @@ for sd in 7 21; do
 done
 say "3. 청소 기록 불러오기(서버 거르기·자동 전환)"
 node "$QA/ww-test.js" "$ROOT" || FAIL=1
-say "4. 청소표 담당 읽기"
-if (cd "$W" && npm i xlsx@0.18.5 --silent >/dev/null 2>&1); then (cd "$W" && cp "$QA/clean-sheet-parse-test.js" . && node clean-sheet-parse-test.js "$ROOT") || FAIL=1; else echo "건너뜀: xlsx 설치 불가"; fi
+say "4. 청소표 담당·메모 시간 · 예약표 24시 스테이 읽기"
+if (cd "$W" && npm i xlsx@0.18.5 jszip@3.10.1 --silent >/dev/null 2>&1); then (cd "$W" && cp "$QA/clean-sheet-parse-test.js" "$QA/h24-parse-test.js" . && node clean-sheet-parse-test.js "$ROOT" && { node h24-parse-test.js "$ROOT" > h24.log 2>&1; rc=$?; grep -E "FAIL|읽기:|Error" h24.log; [ $rc -eq 0 ]; }) || FAIL=1; else echo "건너뜀: xlsx 설치 불가"; fi
 say "5. 화면 시나리오"
 if node -e "require('playwright')" 2>/dev/null; then
   if [ -f "$QA/data/stayIndex.json" ]; then cp "$QA/data/stayIndex.json" "$W/data/"; echo "실제 예약 패턴 사용"; else python3 "$QA/gen-stays.py" "$W/data/stayIndex.json"; fi
@@ -31,7 +31,7 @@ open(sys.argv[2],'w',encoding='utf-8').write(out.replace('<body class="gated">',
 PY
   (cd "$W/site" && python3 -m http.server 8765 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! > "$W/srv.pid"); sleep 1
   cp "$QA"/ui-*.js "$W/"; mkdir -p "$W/scripts"; cp "$QA"/ui-*.js "$W/scripts/"
-  for t in ui-scen ui-asg ui-board ui-vip ui-autoreq ui-home ui-mgr ui-shift ui-duty; do
+  for t in ui-scen ui-asg ui-board ui-vip ui-autoreq ui-home ui-mgr ui-shift ui-duty ui-h24; do
     echo "-- $t"; S="$W" timeout 600 node "$W/$t.js" > "$W/$t.log" 2>&1; RC=$?
     # 시험 스크립트가 중간에 죽으면(예외·시간 초과) FAIL 줄이 없어도 실패로 친다
     [ $RC -ne 0 ] && { echo "   시험 중단(종료 코드 $RC):"; grep -E "Error|Timeout|at " "$W/$t.log" | head -3 | sed 's/^/     /'; FAIL=1; }
